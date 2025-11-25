@@ -9,6 +9,7 @@ const Stack = createStackNavigator();
 export default function AuthNavigator() {
   return (
     <Stack.Navigator
+      initialRouteName="Login"
       screenOptions={{
         headerStyle: {
           backgroundColor: '#6200ee',
@@ -21,17 +22,17 @@ export default function AuthNavigator() {
     >
       <Stack.Screen 
         name="Login" 
-        component={LoginScreen}
-        options={{ title: 'Welcome to ReactBudget' }}
+        component={LoginScreen} 
+        options={{ title: 'Sign In' }}
       />
       <Stack.Screen 
         name="Register" 
-        component={RegisterScreen}
+        component={RegisterScreen} 
         options={{ title: 'Create Account' }}
       />
       <Stack.Screen 
         name="Validation" 
-        component={ValidationScreen}
+        component={ValidationScreen} 
         options={{ title: 'Verify Email' }}
       />
     </Stack.Navigator>

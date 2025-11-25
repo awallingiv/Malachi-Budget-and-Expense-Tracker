@@ -1,76 +1,38 @@
 import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Provider as PaperProvider } from 'react-native-paper';
-import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
+import { Platform, View, Text, SafeAreaView } from 'react-native';
+import { Provider as PaperProvider } from 'react-native-paper';
+import WebDashboard from './src/components/WebDashboard';
+import DashboardScreen from './src/screens/DashboardScreenNew';
 
-import DashboardScreen from './src/screens/DashboardScreen';
-import TransactionsScreen from './src/screens/TransactionsScreen';
-import IncomeScreen from './src/screens/IncomeScreen';
-import ProfileScreen from './src/screens/ProfileScreen';
-import AuthNavigator from './src/navigation/AuthNavigator';
-import { AuthProvider, useAuth } from './src/context/AuthContext';
-
-const Tab = createBottomTabNavigator();
-
-function MainApp() {
-  const { user, isLoading } = useAuth();
-
-  if (isLoading) {
-    return null; // You could add a loading screen here
+const App = () => {
+  console.log('App starting, platform:', Platform.OS);
+  
+  try {
+    return (
+      <PaperProvider>
+        <SafeAreaView style={{ flex: 1 }}>
+          {Platform.OS === 'web' ? (
+            <WebDashboard />
+          ) : (
+            <DashboardScreen />
+          )}
+          <StatusBar style="auto" />
+        </SafeAreaView>
+      </PaperProvider>
+    );
+  } catch (error) {
+    console.error('App render error:', error);
+    return (
+      <PaperProvider>
+        <SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#1a1a1a' }}>
+          <Text style={{ color: 'white', fontSize: 18 }}>
+            App Error: {error.message}
+          </Text>
+        </SafeAreaView>
+      </PaperProvider>
+    );
   }
+};
 
-  if (!user) {
-    return <AuthNavigator />;
-  }
-
-  return (
-    <Tab.Navigator
-      screenOptions={({ route }) => ({
-        tabBarIcon: ({ focused, color, size }) => {
-          let iconName;
-
-          if (route.name === 'Dashboard') {
-            iconName = focused ? 'home' : 'home-outline';
-          } else if (route.name === 'Transactions') {
-            iconName = focused ? 'list' : 'list-outline';
-          } else if (route.name === 'Income') {
-            iconName = focused ? 'wallet' : 'wallet-outline';
-          } else if (route.name === 'Profile') {
-            iconName = focused ? 'person' : 'person-outline';
-          }
-
-          return <Ionicons name={iconName} size={size} color={color} />;
-        },
-        tabBarActiveTintColor: '#6200ee',
-        tabBarInactiveTintColor: 'gray',
-        headerStyle: {
-          backgroundColor: '#6200ee',
-        },
-        headerTintColor: '#fff',
-        headerTitleStyle: {
-          fontWeight: 'bold',
-        },
-      })}
-    >
-      <Tab.Screen name="Dashboard" component={DashboardScreen} />
-      <Tab.Screen name="Transactions" component={TransactionsScreen} />
-      <Tab.Screen name="Income" component={IncomeScreen} />
-      <Tab.Screen name="Profile" component={ProfileScreen} />
-    </Tab.Navigator>
-  );
-}
-
-export default function App() {
-  return (
-    <PaperProvider>
-      <AuthProvider>
-        <NavigationContainer>
-          <StatusBar style="light" />
-          <MainApp />
-        </NavigationContainer>
-      </AuthProvider>
-    </PaperProvider>
-  );
-}
+export default App;

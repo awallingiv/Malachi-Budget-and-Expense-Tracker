@@ -1,5 +1,42 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// Web fallback for AsyncStorage
+const storage = {
+  getItem: async (key) => {
+    try {
+      return await AsyncStorage.getItem(key);
+    } catch (error) {
+      // Fallback to localStorage for web
+      if (typeof window !== 'undefined' && window.localStorage) {
+        return window.localStorage.getItem(key);
+      }
+      return null;
+    }
+  },
+  setItem: async (key, value) => {
+    try {
+      return await AsyncStorage.setItem(key, value);
+    } catch (error) {
+      // Fallback to localStorage for web
+      if (typeof window !== 'undefined' && window.localStorage) {
+        return window.localStorage.setItem(key, value);
+      }
+      throw error;
+    }
+  },
+  removeItem: async (key) => {
+    try {
+      return await AsyncStorage.removeItem(key);
+    } catch (error) {
+      // Fallback to localStorage for web
+      if (typeof window !== 'undefined' && window.localStorage) {
+        return window.localStorage.removeItem(key);
+      }
+      throw error;
+    }
+  }
+};
 import { authService } from '../services/apiService';
 
 const AuthContext = createContext();
@@ -22,12 +59,13 @@ export const AuthProvider = ({ children }) => {
 
   const checkAuthStatus = async () => {
     try {
-      const userData = await AsyncStorage.getItem('user');
+      const userData = await storage.getItem('user');
       if (userData) {
         setUser(JSON.parse(userData));
       }
     } catch (error) {
       console.error('Error checking auth status:', error);
+      // Don't fail completely, just continue without user
     } finally {
       setIsLoading(false);
     }
@@ -43,8 +81,8 @@ export const AuthProvider = ({ children }) => {
           Name: response.Name,
           Email: response.Email
         };
-        await AsyncStorage.setItem('user', JSON.stringify(userData));
-        await AsyncStorage.setItem('token', response.token);
+        await storage.setItem('user', JSON.stringify(userData));
+        await storage.setItem('token', response.token);
         setUser(userData);
         return { success: true, message: response.Message };
       } else {
@@ -91,8 +129,8 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     try {
-      await AsyncStorage.removeItem('user');
-      await AsyncStorage.removeItem('token');
+    await storage.removeItem('user');
+    await storage.removeItem('token');
       setUser(null);
     } catch (error) {
       console.error('Logout error:', error);

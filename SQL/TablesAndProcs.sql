@@ -108,6 +108,49 @@ REFERENCES [dbo].[Users] ([Username])
 GO
 ALTER TABLE [dbo].[Transactions] CHECK CONSTRAINT [FK_Transactions_Users_Username]
 GO
+/****** Object:  Table [dbo].[CategoryWindows]    Script Date: 11/23/2025 12:00:00 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[CategoryWindows](
+	[WindowID] [uniqueidentifier] NOT NULL DEFAULT NEWID(),
+	[UserID] [uniqueidentifier] NOT NULL,
+	[Username] [varchar](17) NOT NULL,
+	[CategoryName] [varchar](50) NOT NULL,
+	[DisplayName] [varchar](100) NOT NULL,
+	[Description] [varchar](255) NULL,
+	[ColorTheme] [varchar](20) NULL DEFAULT 'blue',
+	[PositionX] [int] NOT NULL DEFAULT 100,
+	[PositionY] [int] NOT NULL DEFAULT 100,
+	[Width] [int] NOT NULL DEFAULT 300,
+	[Height] [int] NOT NULL DEFAULT 200,
+	[IsMinimized] [bit] NOT NULL DEFAULT 0,
+	[ZIndex] [int] NOT NULL DEFAULT 1,
+	[IsActive] [bit] NOT NULL DEFAULT 1,
+	[CreationTime] [datetime] NOT NULL DEFAULT GETDATE(),
+	[LastEdit] [datetime] NOT NULL DEFAULT GETDATE(),
+ CONSTRAINT [PK_CategoryWindows] PRIMARY KEY CLUSTERED 
+(
+	[WindowID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+
+ALTER TABLE [dbo].[CategoryWindows]  WITH CHECK ADD  CONSTRAINT [FK_CategoryWindows_Users] FOREIGN KEY([UserID])
+REFERENCES [dbo].[Users] ([UserId])
+GO
+
+ALTER TABLE [dbo].[CategoryWindows] CHECK CONSTRAINT [FK_CategoryWindows_Users]
+GO
+
+ALTER TABLE [dbo].[CategoryWindows]  WITH CHECK ADD  CONSTRAINT [FK_CategoryWindows_Users_Username] FOREIGN KEY([Username])
+REFERENCES [dbo].[Users] ([Username])
+GO
+
+ALTER TABLE [dbo].[CategoryWindows] CHECK CONSTRAINT [FK_CategoryWindows_Users_Username]
+GO
+
 /****** Object:  StoredProcedure [dbo].[sprb_DeleteIncome]    Script Date: 11/9/2025 9:19:39 PM ******/
 SET ANSI_NULLS ON
 GO
@@ -1014,9 +1057,208 @@ BEGIN
         CAST('Validation code updated successfully.' AS VARCHAR(100)) AS Message, 
         @NewCode AS ValidationCode;
 END;
+GO
 
+/****** Category Windows Management Procedures ******/
 
+-- Get all category windows for a user
+CREATE PROCEDURE [dbo].[sprb_GetCategoryWindows]
+    @UserID UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    
+    SELECT 
+        WindowID,
+        CategoryName,
+        DisplayName,
+        Description,
+        ColorTheme,
+        PositionX,
+        PositionY,
+        Width,
+        Height,
+        IsMinimized,
+        ZIndex,
+        IsActive,
+        CreationTime,
+        LastEdit
+    FROM CategoryWindows
+    WHERE UserID = @UserID AND IsActive = 1
+    ORDER BY ZIndex DESC, CreationTime ASC;
+END;
+GO
 
+-- Create new category window
+CREATE PROCEDURE [dbo].[sprb_CreateCategoryWindow]
+    @UserID UNIQUEIDENTIFIER,
+    @Username VARCHAR(17),
+    @CategoryName VARCHAR(50),
+    @DisplayName VARCHAR(100),
+    @Description VARCHAR(255) = NULL,
+    @ColorTheme VARCHAR(20) = 'blue',
+    @PositionX INT = 100,
+    @PositionY INT = 100,
+    @Width INT = 300,
+    @Height INT = 200
+AS
+BEGIN
+    SET NOCOUNT ON;
+    
+    DECLARE @WindowID UNIQUEIDENTIFIER = NEWID();
+    DECLARE @MaxZIndex INT;
+    
+    -- Get the highest Z-index for this user
+    SELECT @MaxZIndex = ISNULL(MAX(ZIndex), 0) + 1
+    FROM CategoryWindows 
+    WHERE UserID = @UserID;
+    
+    INSERT INTO CategoryWindows (
+        WindowID, UserID, Username, CategoryName, DisplayName, 
+        Description, ColorTheme, PositionX, PositionY, 
+        Width, Height, ZIndex
+    )
+    VALUES (
+        @WindowID, @UserID, @Username, @CategoryName, @DisplayName,
+        @Description, @ColorTheme, @PositionX, @PositionY,
+        @Width, @Height, @MaxZIndex
+    );
+    
+    SELECT 
+        CAST(1 AS BIT) AS Success,
+        'Category window created successfully.' AS Message,
+        @WindowID AS NewWindowID;
+END;
+GO
 
+-- Update category window position and properties
+CREATE PROCEDURE [dbo].[sprb_UpdateCategoryWindow]
+    @WindowID UNIQUEIDENTIFIER,
+    @UserID UNIQUEIDENTIFIER,
+    @DisplayName VARCHAR(100) = NULL,
+    @Description VARCHAR(255) = NULL,
+    @ColorTheme VARCHAR(20) = NULL,
+    @PositionX INT = NULL,
+    @PositionY INT = NULL,
+    @Width INT = NULL,
+    @Height INT = NULL,
+    @IsMinimized BIT = NULL,
+    @ZIndex INT = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+    
+    -- Check if window exists and belongs to user
+    IF NOT EXISTS (SELECT 1 FROM CategoryWindows WHERE WindowID = @WindowID AND UserID = @UserID)
+    BEGIN
+        SELECT 
+            CAST(0 AS BIT) AS Success,
+            'Category window not found or access denied.' AS Message;
+        RETURN;
+    END
+    
+    UPDATE CategoryWindows
+    SET 
+        DisplayName = ISNULL(@DisplayName, DisplayName),
+        Description = ISNULL(@Description, Description),
+        ColorTheme = ISNULL(@ColorTheme, ColorTheme),
+        PositionX = ISNULL(@PositionX, PositionX),
+        PositionY = ISNULL(@PositionY, PositionY),
+        Width = ISNULL(@Width, Width),
+        Height = ISNULL(@Height, Height),
+        IsMinimized = ISNULL(@IsMinimized, IsMinimized),
+        ZIndex = ISNULL(@ZIndex, ZIndex),
+        LastEdit = GETDATE()
+    WHERE WindowID = @WindowID;
+    
+    SELECT 
+        CAST(1 AS BIT) AS Success,
+        'Category window updated successfully.' AS Message;
+END;
+GO
 
+-- Delete category window
+CREATE PROCEDURE [dbo].[sprb_DeleteCategoryWindow]
+    @WindowID UNIQUEIDENTIFIER,
+    @UserID UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    
+    -- Check if window exists and belongs to user
+    IF NOT EXISTS (SELECT 1 FROM CategoryWindows WHERE WindowID = @WindowID AND UserID = @UserID)
+    BEGIN
+        SELECT 
+            CAST(0 AS BIT) AS Success,
+            'Category window not found or access denied.' AS Message;
+        RETURN;
+    END
+    
+    -- Soft delete by setting IsActive to 0
+    UPDATE CategoryWindows
+    SET 
+        IsActive = 0,
+        LastEdit = GETDATE()
+    WHERE WindowID = @WindowID;
+    
+    SELECT 
+        CAST(1 AS BIT) AS Success,
+        'Category window deleted successfully.' AS Message;
+END;
+GO
+
+-- Get transactions for a specific category window
+CREATE PROCEDURE [dbo].[sprb_GetWindowTransactions]
+    @UserID UNIQUEIDENTIFIER,
+    @CategoryName VARCHAR(50),
+    @StartDate DATE = NULL,
+    @EndDate DATE = NULL,
+    @Limit INT = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+    
+    SELECT TOP (ISNULL(@Limit, 1000))
+        TransactionId,
+        Description,
+        Amount,
+        Date,
+        Due,
+        Notes,
+        Category,
+        Status,
+        CreationTime
+    FROM Transactions
+    WHERE UserID = @UserID 
+        AND TableName = @CategoryName
+        AND (@StartDate IS NULL OR Date >= @StartDate)
+        AND (@EndDate IS NULL OR Date <= @EndDate)
+    ORDER BY Date DESC, CreationTime DESC;
+END;
+GO
+
+-- Bulk update window positions (for drag operations)
+CREATE PROCEDURE [dbo].[sprb_UpdateWindowPositions]
+    @UserID UNIQUEIDENTIFIER,
+    @WindowUpdates NVARCHAR(MAX) -- JSON array of window updates
+AS
+BEGIN
+    SET NOCOUNT ON;
+    
+    -- Parse JSON and update multiple windows at once
+    UPDATE cw
+    SET 
+        PositionX = CAST(JSON_VALUE(wu.value, '$.positionX') AS INT),
+        PositionY = CAST(JSON_VALUE(wu.value, '$.positionY') AS INT),
+        ZIndex = CAST(JSON_VALUE(wu.value, '$.zIndex') AS INT),
+        LastEdit = GETDATE()
+    FROM CategoryWindows cw
+    CROSS APPLY OPENJSON(@WindowUpdates) wu
+    WHERE cw.WindowID = CAST(JSON_VALUE(wu.value, '$.windowId') AS UNIQUEIDENTIFIER)
+        AND cw.UserID = @UserID;
+    
+    SELECT 
+        CAST(1 AS BIT) AS Success,
+        'Window positions updated successfully.' AS Message;
+END;
 GO

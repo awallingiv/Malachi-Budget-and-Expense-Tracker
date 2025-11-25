@@ -52,7 +52,7 @@ export default function RegisterScreen({ navigation }) {
         <Card style={styles.card}>
           <Card.Content>
             <Text variant="headlineMedium" style={styles.title}>
-              Create Account
+              Create ReactBudget Account
             </Text>
             
             <TextInput

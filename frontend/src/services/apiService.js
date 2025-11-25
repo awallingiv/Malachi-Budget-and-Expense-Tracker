@@ -2,7 +2,7 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Configure base URL - update this to match your backend server
-const API_BASE_URL = 'http://localhost:3001/api';
+const API_BASE_URL = 'http://localhost:5000/api';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -16,7 +16,15 @@ const api = axios.create({
 api.interceptors.request.use(
   async (config) => {
     // Add auth token if available
-    const token = await AsyncStorage.getItem('token');
+    let token;
+    try {
+      token = await AsyncStorage.getItem('token');
+    } catch (error) {
+      // Fallback to localStorage for web
+      if (typeof window !== 'undefined' && window.localStorage) {
+        token = window.localStorage.getItem('token');
+      }
+    }
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -76,6 +84,18 @@ export const budgetService = {
     return response.data;
   },
 
+  getUserCategories: async (userId) => {
+    const response = await api.get(`/budget/categories/${userId}`);
+    return response.data;
+  },
+
+  getRecentTransactions: async (userId, limit = 5) => {
+    const response = await api.get(`/budget/transactions/${userId}`, {
+      params: { limit }
+    });
+    return response.data;
+  },
+
   getTransactions: async (userId) => {
     const response = await api.get(`/budget/transactions/${userId}`);
     return response.data;
@@ -118,6 +138,44 @@ export const budgetService = {
   deleteIncome: async (incomeId, userId) => {
     const response = await api.delete(`/budget/income/${incomeId}`, {
       data: { userId }
+    });
+    return response.data;
+  },
+
+  // Category Windows Management
+  getCategoryWindows: async (userId) => {
+    const response = await api.get(`/budget/windows/${userId}`);
+    return response.data;
+  },
+
+  createCategoryWindow: async (windowData) => {
+    const response = await api.post('/budget/windows', windowData);
+    return response.data;
+  },
+
+  updateCategoryWindow: async (windowId, windowData) => {
+    const response = await api.put(`/budget/windows/${windowId}`, windowData);
+    return response.data;
+  },
+
+  deleteCategoryWindow: async (windowId, userId) => {
+    const response = await api.delete(`/budget/windows/${windowId}`, {
+      data: { userId }
+    });
+    return response.data;
+  },
+
+  getWindowTransactions: async (userId, categoryName, params = {}) => {
+    const response = await api.get(`/budget/windows/${userId}/transactions/${categoryName}`, {
+      params
+    });
+    return response.data;
+  },
+
+  updateWindowPositions: async (userId, windowUpdates) => {
+    const response = await api.post('/budget/windows/positions', {
+      UserID: userId,
+      WindowUpdates: windowUpdates
     });
     return response.data;
   }

@@ -4,8 +4,8 @@ import { Text, TextInput, Button, Card } from 'react-native-paper';
 import { useAuth } from '../context/AuthContext';
 
 export default function LoginScreen({ navigation }) {
-  const [usernameOrEmail, setUsernameOrEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [usernameOrEmail, setUsernameOrEmail] = useState('awallingiv'); // Pre-fill for testing
+  const [password, setPassword] = useState('password'); // Pre-fill for testing
   const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
 
@@ -33,7 +33,7 @@ export default function LoginScreen({ navigation }) {
         <Card style={styles.card}>
           <Card.Content>
             <Text variant="headlineMedium" style={styles.title}>
-              Sign In
+              ReactBudget Sign In
             </Text>
             
             <TextInput
@@ -67,7 +67,7 @@ export default function LoginScreen({ navigation }) {
             
             <Button
               mode="text"
-              onPress={() => navigation.navigate('Register')}
+              onPress={() => Alert.alert('Register', 'Registration will be implemented soon')}
               style={styles.linkButton}
             >
               Don't have an account? Sign Up
