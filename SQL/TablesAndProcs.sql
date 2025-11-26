@@ -353,7 +353,8 @@ SET QUOTED_IDENTIFIER ON
 GO
 
 CREATE   PROCEDURE [dbo].[sprb_GetTransactionsByUserID]    
-	@UserId UNIQUEIDENTIFIER
+	@UserId UNIQUEIDENTIFIER,
+    @TableName NVARCHAR(50) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -374,6 +375,7 @@ BEGIN
         dbo.Transactions
     WHERE
         UserID = @UserId
+        AND (@TableName IS NULL OR TableName = @TableName)
     ORDER BY
         CreationTime DESC;
 END;

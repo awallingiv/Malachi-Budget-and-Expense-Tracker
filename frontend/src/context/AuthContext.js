@@ -72,25 +72,54 @@ export const AuthProvider = ({ children }) => {
   };
 
   const login = async (usernameOrEmail, password) => {
+    console.log('🔑 AuthContext.login() called');
+    console.log('🌐 API Configuration:');
+    console.log('  - Base URL: http://localhost:3002/api');
+    console.log('  - Endpoint: /auth/login');
+    console.log('  - Full URL: http://localhost:3002/api/auth/login');
+    
     try {
+      console.log('📡 Making API call to authService.login...');
       const response = await authService.login(usernameOrEmail, password);
+      console.log('📡 Raw API response received:', response);
+      
       if (response.Success) {
+        console.log('✅ API response indicates success');
         const userData = {
           UserId: response.UserId,
           Username: response.Username,
           Name: response.Name,
           Email: response.Email
         };
+        console.log('💾 Storing user data in storage:', userData);
         await storage.setItem('user', JSON.stringify(userData));
         await storage.setItem('token', response.token);
+        console.log('🔄 Setting user in context...');
         setUser(userData);
+        console.log('✅ Login process completed successfully');
         return { success: true, message: response.Message };
       } else {
+        console.log('❌ API response indicates failure:', response.Message);
         return { success: false, message: response.Message };
       }
     } catch (error) {
-      console.error('Login error:', error);
-      return { success: false, message: 'Network error. Please try again.' };
+      console.error('💥 Error during login API call:');
+      console.error('  - Error message:', error.message);
+      console.error('  - Error code:', error.code);
+      console.error('  - Error response:', error.response?.data);
+      console.error('  - Error status:', error.response?.status);
+      console.error('  - Full error object:', error);
+      
+      let errorMessage = 'Network error. ';
+      if (error.code === 'ECONNREFUSED') {
+        errorMessage += 'Backend server not responding on port 3002.';
+      } else if (error.response?.status) {
+        errorMessage += `Server responded with status ${error.response.status}.`;
+      } else {
+        errorMessage += 'Please check your connection.';
+      }
+      
+      return { success: false, message: errorMessage };
     }
   };
 

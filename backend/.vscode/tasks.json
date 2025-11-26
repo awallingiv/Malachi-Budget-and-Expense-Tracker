@@ -1,0 +1,62 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Run Backend Tests",
+			"type": "shell",
+			"command": "cd /d c:\\Dev\\Budget\\ReactBudget\\backend && node comprehensive-test.js",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "test"
+		},
+		{
+			"label": "Check if server is running on port 3002",
+			"type": "shell",
+			"command": "curl -s http://localhost:3002/health || echo \"Server not running on port 3002\"",
+			"isBackground": false,
+			"group": "test"
+		},
+		{
+			"label": "Start server on port 3002",
+			"type": "shell",
+			"command": "set PORT=3002 && node server.js",
+			"isBackground": true,
+			"group": "build"
+		},
+		{
+			"label": "Run comprehensive tests",
+			"type": "shell",
+			"command": "node comprehensive-test.js",
+			"isBackground": false,
+			"group": "test"
+		},
+		{
+			"label": "Run test-runner",
+			"type": "shell",
+			"command": "node test-runner.js",
+			"isBackground": false,
+			"group": "test"
+		},
+		{
+			"label": "Analyze Backend",
+			"type": "shell",
+			"command": "cd /d c:\\Dev\\Budget\\ReactBudget\\backend && node analyze-backend.js",
+			"isBackground": false,
+			"group": "test"
+		},
+		{
+			"label": "Backend Analysis Report",
+			"type": "shell",
+			"command": "node analyze-backend.js",
+			"isBackground": false,
+			"group": "test"
+		},
+		{
+			"label": "Run Test Report",
+			"type": "shell",
+			"command": "cd /d c:\\Dev\\Budget\\ReactBudget\\backend && node test-report.js",
+			"isBackground": false,
+			"group": "test"
+		}
+	]
+}

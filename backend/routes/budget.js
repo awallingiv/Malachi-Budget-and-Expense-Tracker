@@ -108,13 +108,23 @@ router.get('/dashboard/:userId', async (req, res) => {
 router.get('/transactions/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
-    const { limit } = req.query;
+    const { limit, category } = req.query;
 
-    const result = await executeStoredProcedure('sprb_GetTransactionsByUserID', {
+    console.log('Transactions request:', { userId, limit, category });
+
+    const params = {
       UserId: { type: sql.UniqueIdentifier, value: userId }
-    });
+    };
+
+    // Add TableName parameter if category is specified
+    if (category) {
+      params.TableName = { type: sql.NVarChar, value: category };
+    }
+
+    const result = await executeStoredProcedure('sprb_GetTransactionsByUserID', params);
 
     let transactions = result.recordset;
+    console.log(`Found ${transactions.length} transactions for category: ${category || 'all'}`);
 
     // Apply limit if specified and sort by most recent
     if (limit) {

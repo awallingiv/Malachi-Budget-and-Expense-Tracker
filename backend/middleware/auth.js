@@ -20,7 +20,7 @@ const protect = async (req, res, next) => {
 
       // Get user from database
       const result = await executeStoredProcedure('sprb_GetUserById', {
-        UserId: { type: sql.UniqueIdentifier, value: userId }
+        UserId: { type: sql.UniqueIdentifier, value: decoded.userId }
       });
 
       if (!result.recordset || result.recordset.length === 0) {

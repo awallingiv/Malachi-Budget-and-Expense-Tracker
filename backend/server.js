@@ -9,6 +9,7 @@ require('dotenv').config();
 const authRoutes = require('./routes/auth');
 const budgetRoutes = require('./routes/budget');
 const userRoutes = require('./routes/user');
+const categoryWindowRoutes = require('./routes/categoryWindows');
 const { connectDatabase, testConnection } = require('./config/database');
 const { errorHandler, notFound } = require('./middleware/errorHandler');
 
@@ -61,6 +62,7 @@ app.get('/health', async (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/budget', budgetRoutes);
 app.use('/api/user', userRoutes);
+app.use('/api/category', categoryWindowRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {
