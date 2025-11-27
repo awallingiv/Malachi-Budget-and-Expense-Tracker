@@ -4,6 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { budgetService, categoryService } from '../services/apiService';
 import DraggableWindow from './DraggableWindowClean';
+import TransactionForm from './TransactionForm';
+import IncomeForm from './IncomeForm';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -22,22 +24,10 @@ const WebDashboard = ({ onSwitchMode }) => {
   const [isWindowsLocked, setIsWindowsLocked] = useState(false);
   
   // Modal states
-  const [showIncomeModal, setShowIncomeModal] = useState(false);
-  const [showExpenseModal, setShowExpenseModal] = useState(false);
+  // Old modal states replaced by enhanced form visibility states above
   const [editingItem, setEditingItem] = useState(null);
   
-  // Form states
-  const [incomeForm, setIncomeForm] = useState({
-    Description: '', Gross: '', Net: '', Tithe: '',
-    Date: new Date().toISOString().split('T')[0],
-    TitheStatus: 'unpaid', PaycheckStatus: 'received'
-  });
-  
-  const [expenseForm, setExpenseForm] = useState({
-    Description: '', Amount: '', TableName: '',
-    Date: new Date().toISOString().split('T')[0],
-    Notes: '', Category: '', Status: 'paid'
-  });
+  // Old form states removed - enhanced forms manage their own state
   const [windows, setWindows] = useState([
     { id: 'overview', title: 'Financial Overview', visible: true, zIndex: 1, position: { x: 50, y: 140 }, size: { width: 600, height: 450 } },
     { id: 'income', title: 'Income Management', visible: true, zIndex: 2, position: { x: 680, y: 140 }, size: { width: 650, height: 480 } },
@@ -54,6 +44,13 @@ const WebDashboard = ({ onSwitchMode }) => {
   const [userTables, setUserTables] = useState([]);
   const [categoryWindows, setCategoryWindows] = useState([]);
   const [loading, setLoading] = useState(true);
+  
+  // Form states
+  const [transactionFormVisible, setTransactionFormVisible] = useState(false);
+  const [incomeFormVisible, setIncomeFormVisible] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState(null);
+  const [editingIncome, setEditingIncome] = useState(null);
+  const [formCategoryContext, setFormCategoryContext] = useState(null);
 
   useEffect(() => {
     initializeDashboard();
@@ -518,139 +515,66 @@ const WebDashboard = ({ onSwitchMode }) => {
   const defaultCategories = ['Bills', 'Utilities', 'Subscriptions', 'Food', 'Transportation', 'Entertainment', 'Shopping', 'Healthcare'];
   const allCategories = [...new Set([...existingCategories, ...defaultCategories])].sort();
 
-  // Auto-calculate tithe
-  useEffect(() => {
-    if (incomeForm.Gross) {
-      const gross = parseFloat(incomeForm.Gross) || 0;
-      const tithe = gross * 0.1;
-      setIncomeForm(prev => ({ ...prev, Tithe: tithe.toFixed(2) }));
-    }
-  }, [incomeForm.Gross]);
-
-  // Reset forms
-  const resetIncomeForm = () => {
-    setIncomeForm({
-      Description: '', Gross: '', Net: '', Tithe: '',
-      Date: new Date().toISOString().split('T')[0],
-      TitheStatus: 'unpaid', PaycheckStatus: 'received'
-    });
-    setEditingItem(null);
-  };
-
-  const resetExpenseForm = () => {
-    setExpenseForm({
-      Description: '', Amount: '', TableName: '',
-      Date: new Date().toISOString().split('T')[0],
-      Notes: '', Category: '', Status: 'paid'
-    });
-    setEditingItem(null);
-  };
+  // Old form handlers removed - enhanced forms manage their own logic
 
   // CRUD Handlers
   const handleAddTransaction = (category) => {
-    const tableNameMap = { 'Utilities': 'Bills', 'Subscriptions': 'Subscriptions', 'Expenses': '' };
+    console.log('📝 Adding transaction for category:', category);
+    
+    // Map display names to SQL TableName values
+    const tableNameMap = {
+      'Utilities': 'Bills',
+      'Subscriptions': 'Subscriptions', 
+      'Expenses': 'Expenses'
+    };
+    
     const tableName = tableNameMap[category] || category;
-    resetExpenseForm();
-    setExpenseForm(prev => ({ ...prev, TableName: tableName }));
-    setShowExpenseModal(true);
+    console.log('TableName for SQL:', tableName);
+    
+    // Set category context and show form
+    setFormCategoryContext(tableName);
+    setEditingTransaction(null);
+    setTransactionFormVisible(true);
   };
 
   const handleAddIncome = () => {
-    resetIncomeForm();
-    setShowIncomeModal(true);
+    console.log('💰 Adding new income');
+    setEditingIncome(null);
+    setIncomeFormVisible(true);
   };
 
   const handleEditTransaction = (transaction) => {
-    setEditingItem(transaction);
-    setExpenseForm({
-      Description: transaction.description || '',
-      Amount: (transaction.amount || 0).toString(),
-      TableName: transaction.category || '',
-      Date: transaction.date || new Date().toISOString().split('T')[0],
-      Notes: transaction.notes || '',
-      Category: transaction.category || '',
-      Status: transaction.status || 'paid'
-    });
-    setShowExpenseModal(true);
+    console.log('✏️ Editing transaction:', transaction);
+    setEditingTransaction(transaction);
+    setFormCategoryContext(transaction.category);
+    setTransactionFormVisible(true);
   };
 
-  const handleEditIncome = (inc) => {
-    setEditingItem(inc);
-    setIncomeForm({
-      Description: inc.Description || '',
-      Gross: (inc.Gross || 0).toString(),
-      Net: (inc.Net || 0).toString(),
-      Tithe: (inc.Tithe || 0).toString(),
-      Date: inc.Date || new Date().toISOString().split('T')[0],
-      TitheStatus: inc.TitheStatus || 'unpaid',
-      PaycheckStatus: inc.PaycheckStatus || 'received'
-    });
-    setShowIncomeModal(true);
+  const handleEditIncome = (income) => {
+    console.log('✏️ Editing income:', income);
+    setEditingIncome(income);
+    setIncomeFormVisible(true);
   };
 
-  const handleSaveIncome = async () => {
-    try {
-      const data = {
-        UserID: currentUser.UserId,
-        Username: currentUser.Username,
-        Description: incomeForm.Description,
-        Gross: parseFloat(incomeForm.Gross) || 0,
-        Net: parseFloat(incomeForm.Net) || 0,
-        Tithe: parseFloat(incomeForm.Tithe) || 0,
-        Date: incomeForm.Date,
-        TitheStatus: incomeForm.TitheStatus,
-        PaycheckStatus: incomeForm.PaycheckStatus
-      };
-
-      if (editingItem?.IncomeId) {
-        await budgetService.updateIncome(editingItem.IncomeId, data);
-      } else {
-        await budgetService.createIncome(data);
-      }
-      
-      setShowIncomeModal(false);
-      resetIncomeForm();
-      loadIncome();
-      loadDashboardData();
-    } catch (error) {
-      alert('Failed to save income: ' + error.message);
-    }
-  };
-
-  const handleSaveExpense = async () => {
-    if (!expenseForm.TableName) {
-      alert('Please select a category');
-      return;
-    }
-    
-    try {
-      const data = {
-        UserID: currentUser.UserId,
-        Username: currentUser.Username,
-        TableName: expenseForm.TableName,
-        Description: expenseForm.Description,
-        Amount: parseFloat(expenseForm.Amount) || 0,
-        Date: expenseForm.Date,
-        Notes: expenseForm.Notes,
-        Category: expenseForm.TableName,
-        Status: expenseForm.Status
-      };
-
-      if (editingItem?.TransactionId || editingItem?.id) {
-        await budgetService.updateTransaction(editingItem.TransactionId || editingItem.id, data);
-      } else {
-        await budgetService.createTransaction(data);
-      }
-      
-      setShowExpenseModal(false);
-      resetExpenseForm();
-      loadRecentTransactions();
+  // Form save handlers
+  const handleTransactionSaved = (savedTransaction) => {
+    console.log('✅ Transaction saved:', savedTransaction);
+    // Refresh the appropriate category data
+    if (formCategoryContext) {
       loadCategoryTransactions();
-      loadDashboardData();
-    } catch (error) {
-      alert('Failed to save expense: ' + error.message);
+    } else {
+      loadRecentTransactions();
     }
+    loadDashboardData(); // Refresh totals
   };
+
+  const handleIncomeSaved = (savedIncome) => {
+    console.log('✅ Income saved:', savedIncome);
+    loadIncome();
+    loadDashboardData(); // Refresh totals
+  };
+
+  // Old save handlers removed - enhanced forms handle their own CRUD operations
 
   const handleDeleteIncome = async (incomeId) => {
     if (!confirm('Delete this income record?')) return;
@@ -1349,172 +1273,32 @@ const WebDashboard = ({ onSwitchMode }) => {
 
       <WebTaskbar />
 
-      {/* Income Modal */}
-      <Modal visible={showIncomeModal} transparent animationType="fade">
-        <View style={modalStyles.overlay}>
-          <View style={modalStyles.content}>
-            <View style={modalStyles.header}>
-              <Text style={modalStyles.title}>{editingItem ? 'Edit Income' : 'Add Income'}</Text>
-              <TouchableOpacity onPress={() => { setShowIncomeModal(false); resetIncomeForm(); }}>
-                <Text style={modalStyles.close}>✕</Text>
-              </TouchableOpacity>
-            </View>
-            <ScrollView style={modalStyles.body}>
-              <Text style={modalStyles.label}>Description</Text>
-              <TextInput
-                style={modalStyles.input}
-                value={incomeForm.Description}
-                onChangeText={(text) => setIncomeForm(prev => ({ ...prev, Description: text }))}
-                placeholder="e.g., Paycheck, Bonus"
-                placeholderTextColor="#666"
-              />
-              <Text style={modalStyles.label}>Gross Amount</Text>
-              <TextInput
-                style={modalStyles.input}
-                value={incomeForm.Gross}
-                onChangeText={(text) => setIncomeForm(prev => ({ ...prev, Gross: text }))}
-                placeholder="0.00"
-                placeholderTextColor="#666"
-                keyboardType="decimal-pad"
-              />
-              <Text style={modalStyles.label}>Net Amount</Text>
-              <TextInput
-                style={modalStyles.input}
-                value={incomeForm.Net}
-                onChangeText={(text) => setIncomeForm(prev => ({ ...prev, Net: text }))}
-                placeholder="0.00"
-                placeholderTextColor="#666"
-                keyboardType="decimal-pad"
-              />
-              <Text style={modalStyles.label}>Tithe (10% auto-calculated)</Text>
-              <TextInput
-                style={modalStyles.input}
-                value={incomeForm.Tithe}
-                onChangeText={(text) => setIncomeForm(prev => ({ ...prev, Tithe: text }))}
-                placeholder="Auto-calculated"
-                placeholderTextColor="#666"
-                keyboardType="decimal-pad"
-              />
-              <Text style={modalStyles.label}>Date</Text>
-              <TextInput
-                style={modalStyles.input}
-                value={incomeForm.Date}
-                onChangeText={(text) => setIncomeForm(prev => ({ ...prev, Date: text }))}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor="#666"
-              />
-            </ScrollView>
-            <View style={modalStyles.footer}>
-              {editingItem && (
-                <TouchableOpacity 
-                  style={modalStyles.deleteButton}
-                  onPress={() => { setShowIncomeModal(false); handleDeleteIncome(editingItem.IncomeId); }}
-                >
-                  <Text style={modalStyles.deleteButtonText}>Delete</Text>
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity style={modalStyles.saveButton} onPress={handleSaveIncome}>
-                <Text style={modalStyles.saveButtonText}>Save Income</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      {/* Enhanced Forms */}
+      <TransactionForm
+        isVisible={transactionFormVisible}
+        transaction={editingTransaction}
+        categoryName={formCategoryContext}
+        onClose={() => {
+          setTransactionFormVisible(false);
+          setEditingTransaction(null);
+          setFormCategoryContext(null);
+        }}
+        onSave={handleTransactionSaved}
+      />
 
-      {/* Expense Modal */}
-      <Modal visible={showExpenseModal} transparent animationType="fade">
-        <View style={modalStyles.overlay}>
-          <View style={modalStyles.content}>
-            <View style={modalStyles.header}>
-              <Text style={modalStyles.title}>{editingItem ? 'Edit Expense' : 'Add Expense'}</Text>
-              <TouchableOpacity onPress={() => { setShowExpenseModal(false); resetExpenseForm(); }}>
-                <Text style={modalStyles.close}>✕</Text>
-              </TouchableOpacity>
-            </View>
-            <ScrollView style={modalStyles.body}>
-              <Text style={modalStyles.label}>Category</Text>
-              <View style={modalStyles.categoryPicker}>
-                {allCategories.slice(0, 8).map((cat) => (
-                  <TouchableOpacity
-                    key={cat}
-                    style={[
-                      modalStyles.categoryChip,
-                      expenseForm.TableName === cat && modalStyles.categoryChipActive
-                    ]}
-                    onPress={() => setExpenseForm(prev => ({ ...prev, TableName: cat }))}
-                  >
-                    <Text style={[
-                      modalStyles.categoryChipText,
-                      expenseForm.TableName === cat && modalStyles.categoryChipTextActive
-                    ]}>{cat}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              <Text style={modalStyles.label}>Or enter new category</Text>
-              <TextInput
-                style={modalStyles.input}
-                value={expenseForm.TableName}
-                onChangeText={(text) => setExpenseForm(prev => ({ ...prev, TableName: text }))}
-                placeholder="e.g., Groceries, Insurance"
-                placeholderTextColor="#666"
-              />
-              <Text style={modalStyles.label}>Description</Text>
-              <TextInput
-                style={modalStyles.input}
-                value={expenseForm.Description}
-                onChangeText={(text) => setExpenseForm(prev => ({ ...prev, Description: text }))}
-                placeholder="What was this for?"
-                placeholderTextColor="#666"
-              />
-              <Text style={modalStyles.label}>Amount</Text>
-              <TextInput
-                style={modalStyles.input}
-                value={expenseForm.Amount}
-                onChangeText={(text) => setExpenseForm(prev => ({ ...prev, Amount: text }))}
-                placeholder="0.00"
-                placeholderTextColor="#666"
-                keyboardType="decimal-pad"
-              />
-              <Text style={modalStyles.label}>Date</Text>
-              <TextInput
-                style={modalStyles.input}
-                value={expenseForm.Date}
-                onChangeText={(text) => setExpenseForm(prev => ({ ...prev, Date: text }))}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor="#666"
-              />
-              <Text style={modalStyles.label}>Notes (optional)</Text>
-              <TextInput
-                style={[modalStyles.input, { minHeight: 80 }]}
-                value={expenseForm.Notes}
-                onChangeText={(text) => setExpenseForm(prev => ({ ...prev, Notes: text }))}
-                placeholder="Additional details..."
-                placeholderTextColor="#666"
-                multiline
-              />
-            </ScrollView>
-            <View style={modalStyles.footer}>
-              {editingItem && (
-                <TouchableOpacity 
-                  style={modalStyles.deleteButton}
-                  onPress={() => { 
-                    setShowExpenseModal(false); 
-                    if (confirm('Delete this expense?')) {
-                      budgetService.deleteTransaction(editingItem.TransactionId || editingItem.id, currentUser.UserId)
-                        .then(() => { loadRecentTransactions(); loadCategoryTransactions(); loadDashboardData(); });
-                    }
-                  }}
-                >
-                  <Text style={modalStyles.deleteButtonText}>Delete</Text>
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity style={modalStyles.saveButton} onPress={handleSaveExpense}>
-                <Text style={modalStyles.saveButtonText}>Save Expense</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      <IncomeForm
+        isVisible={incomeFormVisible}
+        income={editingIncome}
+        onClose={() => {
+          setIncomeFormVisible(false);
+          setEditingIncome(null);
+        }}
+        onSave={handleIncomeSaved}
+      />
+
+
+
+      {/* Enhanced Transaction and Income Forms now handle all CRUD operations */}
     </View>
   );
 };

@@ -25,6 +25,104 @@ const handleValidationErrors = (req, res, next) => {
   next();
 };
 
+/**
+ * Validation Rules
+ */
+// Transaction validation rules
+const validateTransaction = [
+  body('username')
+    .isLength({ min: 1, max: 17 })
+    .withMessage('Username must be 1-17 characters'),
+  body('tableName')
+    .isLength({ min: 1, max: 20 })
+    .withMessage('TableName must be 1-20 characters'),
+  body('description')
+    .optional()
+    .isLength({ max: 150 })
+    .withMessage('Description must be maximum 150 characters'),
+  body('amount')
+    .isFloat({ min: 0 })
+    .withMessage('Amount must be a positive number'),
+  body('due')
+    .optional()
+    .isISO8601()
+    .withMessage('Due date must be valid ISO8601 date'),
+  body('date')
+    .optional()
+    .isISO8601()
+    .withMessage('Date must be valid ISO8601 date'),
+  body('notes')
+    .optional()
+    .isLength({ max: 60 })
+    .withMessage('Notes must be maximum 60 characters'),
+  body('category')
+    .optional()
+    .isLength({ max: 20 })
+    .withMessage('Category must be maximum 20 characters'),
+  body('status')
+    .optional()
+    .isLength({ max: 20 })
+    .withMessage('Status must be maximum 20 characters')
+];
+
+// Income validation rules
+const validateIncome = [
+  body('username')
+    .isLength({ min: 1, max: 17 })
+    .withMessage('Username must be 1-17 characters'),
+  body('description')
+    .optional()
+    .isLength({ max: 45 })
+    .withMessage('Description must be maximum 45 characters'),
+  body('net')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('Net amount must be a positive number'),
+  body('gross')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('Gross amount must be a positive number'),
+  body('tithe')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('Tithe amount must be a positive number'),
+  body('titheStatus')
+    .optional()
+    .isLength({ max: 45 })
+    .withMessage('Tithe status must be maximum 45 characters'),
+  body('date')
+    .optional()
+    .isLength({ max: 45 })
+    .withMessage('Date must be maximum 45 characters (stored as VARCHAR)'),
+  body('paycheckStatus')
+    .optional()
+    .isLength({ max: 45 })
+    .withMessage('Paycheck status must be maximum 45 characters'),
+  body('notes')
+    .optional()
+    .isLength({ max: 500 })
+    .withMessage('Notes must be maximum 500 characters')
+];
+
+// ID validation rules
+const validateUserId = [
+  param('userId')
+    .isUUID()
+    .withMessage('User ID must be a valid UUID')
+];
+
+const validateTransactionId = [
+  param('transactionId')
+    .isUUID()
+    .withMessage('Transaction ID must be a valid UUID')
+];
+
+const validateIncomeId = [
+  param('incomeId')
+    .isUUID()
+    .withMessage('Income ID must be a valid UUID')
+];
+
 // Apply authentication to all budget routes
 // router.use(protect); // Temporarily disabled for testing
 
@@ -185,7 +283,7 @@ router.post('/transactions', [
   body('UserID').isUUID().withMessage('Valid user ID required'),
   body('Username').isLength({ min: 1, max: 17 }).withMessage('Username required (max 17 chars)'),
   body('TableName').isLength({ min: 1, max: 20 }).withMessage('Category required (max 20 chars)'),
-  body('Description').optional().isLength({ max: 35 }).withMessage('Description max 35 characters'),
+  body('Description').optional().isLength({ max: 150 }).withMessage('Description max 150 characters'),
   body('Amount').isFloat({ min: 0 }).withMessage('Valid amount required'),
   body('Due').optional().isISO8601().withMessage('Valid due date required'),
   body('Date').optional().isISO8601().withMessage('Valid date required'),

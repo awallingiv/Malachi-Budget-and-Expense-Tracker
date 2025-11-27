@@ -5,8 +5,12 @@
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
-    "ios": "expo start --ios",
-    "web": "expo start --web"
+    "ios": "expo start --ios", 
+    "web": "expo start --web",
+    "build:web": "expo export --platform web",
+    "build:android": "expo build:android",
+    "build:ios": "expo build:ios",
+    "preview": "expo start --web --no-dev"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^2.2.0",

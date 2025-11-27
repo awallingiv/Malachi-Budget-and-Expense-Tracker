@@ -30,7 +30,7 @@ app.use(compression());
 app.use(helmet());
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
-    ? ['http://localhost:19006', 'http://localhost:19000'] // Expo web and mobile
+    ? (process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : ['https://budget.austinwalling.dev'])
     : true,
   credentials: true
 }));
@@ -38,6 +38,26 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 app.use('/api', limiter);
+
+// Health check endpoint
+app.get('/health', async (req, res) => {
+  try {
+    await testConnection();
+    res.json({ 
+      status: 'healthy', 
+      timestamp: new Date().toISOString(),
+      database: 'connected'
+    });
+  } catch (error) {
+    res.status(503).json({ 
+      status: 'unhealthy', 
+      timestamp: new Date().toISOString(),
+      database: 'disconnected',
+      error: error.message
+    });
+  }
+});
+
 
 // Health check endpoint
 app.get('/health', async (req, res) => {

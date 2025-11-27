@@ -1,8 +1,10 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Configure base URL - update this to match your backend server
-const API_BASE_URL = 'http://localhost:3002/api';
+// Configure base URL - dynamically set based on environment
+const API_BASE_URL = __DEV__ 
+  ? 'http://localhost:3002/api'  // Development
+  : 'https://budget.austinwalling.dev/api'; // Production - UPDATE THIS!
 
 const api = axios.create({
   baseURL: API_BASE_URL,
