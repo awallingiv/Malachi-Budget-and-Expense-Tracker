@@ -33,6 +33,9 @@ export default function TransactionsScreen() {
   const [filterCategory, setFilterCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('date');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [lastCategory, setLastCategory] = useState('');
 
   // New transaction form state
   const [newTransaction, setNewTransaction] = useState({
@@ -92,6 +95,7 @@ export default function TransactionsScreen() {
       const result = await budgetService.createTransaction(transactionData);
       
       if (result.success) {
+        setLastCategory(newTransaction.TableName || lastCategory);
         setShowAddModal(false);
         resetNewTransaction();
         loadData();
@@ -135,7 +139,7 @@ export default function TransactionsScreen() {
 
   const resetNewTransaction = () => {
     setNewTransaction({
-      TableName: '',
+      TableName: lastCategory || '',
       Description: '',
       Amount: '',
       Date: new Date().toISOString().split('T')[0],
@@ -163,7 +167,10 @@ export default function TransactionsScreen() {
       const matchesCategory = filterCategory === 'all' || t.TableName === filterCategory;
       const matchesSearch = t.Description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
                            t.TableName?.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchesCategory && matchesSearch;
+      const date = t.Date ? new Date(t.Date) : null;
+      const withinStart = !startDate || (date && date >= new Date(startDate));
+      const withinEnd = !endDate || (date && date <= new Date(endDate));
+      return matchesCategory && matchesSearch && withinStart && withinEnd;
     })
     .sort((a, b) => {
       switch (sortBy) {
@@ -269,6 +276,22 @@ export default function TransactionsScreen() {
             ]}
             style={styles.sortButtons}
           />
+          <View style={styles.dateFilters}>
+            <TextInput
+              label="Start date"
+              value={startDate}
+              onChangeText={setStartDate}
+              style={styles.dateInput}
+              placeholder="YYYY-MM-DD"
+            />
+            <TextInput
+              label="End date"
+              value={endDate}
+              onChangeText={setEndDate}
+              style={styles.dateInput}
+              placeholder="YYYY-MM-DD"
+            />
+          </View>
         </View>
         
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryFilter}>

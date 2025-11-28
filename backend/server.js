@@ -4,7 +4,10 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
-require('dotenv').config();
+require('dotenv').config({
+  path: process.env.NODE_ENV === 'production' ? '.env.production' : '.env'
+});
+
 
 const authRoutes = require('./routes/auth');
 const budgetRoutes = require('./routes/budget');
@@ -73,6 +76,31 @@ app.get('/health', async (req, res) => {
       status: 'unhealthy', 
       timestamp: new Date().toISOString(),
       database: 'disconnected',
+      error: error.message
+    });
+  }
+});
+
+// Email configuration test endpoint
+app.get('/api/test-email', async (req, res) => {
+  try {
+    const emailService = require('./services/emailService');
+    const isConnected = await emailService.testConnection();
+    
+    res.json({
+      status: isConnected ? 'success' : 'failed',
+      timestamp: new Date().toISOString(),
+      smtp: {
+        host: process.env.SMTP_HOST,
+        port: process.env.SMTP_PORT,
+        user: process.env.SMTP_USER,
+        from: process.env.SMTP_FROM
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      timestamp: new Date().toISOString(),
       error: error.message
     });
   }

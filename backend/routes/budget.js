@@ -124,7 +124,7 @@ const validateIncomeId = [
 ];
 
 // Apply authentication to all budget routes
-// router.use(protect); // Temporarily disabled for testing
+router.use(protect);
 
 /**
  * @route   GET /api/budget/dashboard/:userId
@@ -199,6 +199,621 @@ router.get('/dashboard/:userId', async (req, res) => {
 });
 
 /**
+ * BUDGETS (PLANNED VS ACTUAL)
+ */
+
+/**
+ * @route   GET /api/budget/budgets/:userId
+ * @desc    Get budgets for a user for a given period (defaults to current month)
+ * @access  Private
+ */
+router.get('/budgets/:userId', [
+  param('userId').isUUID().withMessage('Valid user ID required'),
+  query('startDate').optional().isISO8601().withMessage('Valid start date required'),
+  query('endDate').optional().isISO8601().withMessage('Valid end date required')
+], handleValidationErrors, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { startDate, endDate } = req.query;
+
+    // Enforce ownership
+    if (userId.toUpperCase() !== req.user.UserId.toUpperCase()) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to view budgets for this user'
+      });
+    }
+
+    const now = new Date();
+    const defaultStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const defaultEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+    const start = startDate ? new Date(startDate) : defaultStart;
+    const end = endDate ? new Date(endDate) : defaultEnd;
+
+    const queryText = `
+      SELECT BudgetID, UserID, Username, CategoryName, PeriodStart, PeriodEnd, Amount, Currency, CreationTime, LastEdit
+      FROM Budgets
+      WHERE UserID = @userId
+        AND PeriodStart >= @startDate
+        AND PeriodEnd <= @endDate
+      ORDER BY PeriodStart, CategoryName;
+    `;
+
+    const result = await executeQuery(queryText, {
+      userId: { type: sql.UniqueIdentifier, value: userId },
+      startDate: { type: sql.Date, value: start },
+      endDate: { type: sql.Date, value: end }
+    });
+
+    res.json(result.recordset || []);
+  } catch (error) {
+    console.error('Get budgets error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch budgets'
+    });
+  }
+});
+
+/**
+ * RECURRING ITEMS (BILLS, SUBSCRIPTIONS, RECURRING INCOME)
+ */
+
+/**
+ * @route   GET /api/budget/recurring/:userId
+ * @desc    Get recurring items for a user (optionally filtered by type)
+ * @access  Private
+ */
+router.get('/recurring/:userId', [
+  param('userId').isUUID().withMessage('Valid user ID required'),
+  query('type').optional().isIn(['expense', 'income']).withMessage('Type must be expense or income')
+], handleValidationErrors, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { type } = req.query;
+
+    if (userId.toUpperCase() !== req.user.UserId.toUpperCase()) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to view recurring items for this user'
+      });
+    }
+
+    const queryText = `
+      SELECT RecurringID, UserID, Username, ItemType, Description, TableName, Amount,
+             StartDate, EndDate, Frequency, Interval, NextOccurrence, IsActive,
+             CreationTime, LastEdit, Notes
+      FROM RecurringItems
+      WHERE UserID = @userId
+        AND (@itemType IS NULL OR ItemType = @itemType)
+      ORDER BY NextOccurrence, Description;
+    `;
+
+    const result = await executeQuery(queryText, {
+      userId: { type: sql.UniqueIdentifier, value: userId },
+      itemType: { type: sql.VarChar(10), value: type || null }
+    });
+
+    res.json(result.recordset || []);
+  } catch (error) {
+    console.error('Get recurring items error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch recurring items'
+    });
+  }
+});
+
+/**
+ * @route   POST /api/budget/recurring
+ * @desc    Create a new recurring item
+ * @access  Private
+ */
+router.post('/recurring', [
+  body('UserID').isUUID().withMessage('Valid user ID required'),
+  body('Username').isLength({ min: 1, max: 17 }).withMessage('Username required (max 17 chars)'),
+  body('ItemType').isIn(['expense', 'income']).withMessage('ItemType must be expense or income'),
+  body('Description').optional().isLength({ max: 150 }).withMessage('Description max 150 characters'),
+  body('TableName').optional().isLength({ max: 50 }).withMessage('TableName max 50 characters'),
+  body('Amount').isFloat({ min: 0 }).withMessage('Amount must be a non-negative number'),
+  body('StartDate').isISO8601().withMessage('Valid start date required'),
+  body('EndDate').optional().isISO8601().withMessage('Valid end date required'),
+  body('Frequency').isLength({ min: 1, max: 20 }).withMessage('Frequency required (e.g., monthly)'),
+  body('Interval').optional().isInt({ min: 1 }).withMessage('Interval must be at least 1'),
+  body('NextOccurrence').optional().isISO8601().withMessage('Valid next occurrence date required'),
+  body('Notes').optional().isLength({ max: 255 }).withMessage('Notes max 255 characters')
+], handleValidationErrors, async (req, res) => {
+  try {
+    const {
+      UserID,
+      Username,
+      ItemType,
+      Description,
+      TableName,
+      Amount,
+      StartDate,
+      EndDate,
+      Frequency,
+      Interval,
+      NextOccurrence,
+      Notes
+    } = req.body;
+
+    if (UserID.toUpperCase() !== req.user.UserId.toUpperCase()) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to create recurring items for this user'
+      });
+    }
+
+    const startDateObj = new Date(StartDate);
+    const endDateObj = EndDate ? new Date(EndDate) : null;
+    const nextOccurrenceDate =
+      NextOccurrence ? new Date(NextOccurrence) : startDateObj;
+
+    const queryText = `
+      INSERT INTO RecurringItems (
+        UserID, Username, ItemType, Description, TableName, Amount,
+        StartDate, EndDate, Frequency, Interval, NextOccurrence, IsActive, Notes
+      )
+      OUTPUT inserted.RecurringID
+      VALUES (
+        @userId, @username, @itemType, @description, @tableName, @amount,
+        @startDate, @endDate, @frequency, @interval, @nextOccurrence, 1, @notes
+      );
+    `;
+
+    const result = await executeQuery(queryText, {
+      userId: { type: sql.UniqueIdentifier, value: UserID },
+      username: { type: sql.VarChar(17), value: Username },
+      itemType: { type: sql.VarChar(10), value: ItemType },
+      description: { type: sql.VarChar(150), value: Description || null },
+      tableName: { type: sql.VarChar(50), value: TableName || null },
+      amount: { type: sql.Float, value: Amount },
+      startDate: { type: sql.Date, value: startDateObj },
+      endDate: { type: sql.Date, value: endDateObj },
+      frequency: { type: sql.VarChar(20), value: Frequency },
+      interval: { type: sql.Int, value: Interval || 1 },
+      nextOccurrence: { type: sql.Date, value: nextOccurrenceDate },
+      notes: { type: sql.VarChar(255), value: Notes || null }
+    });
+
+    const createdId = result.recordset?.[0]?.RecurringID;
+
+    res.status(201).json({
+      success: true,
+      message: 'Recurring item created successfully',
+      recurringId: createdId
+    });
+  } catch (error) {
+    console.error('Create recurring item error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create recurring item'
+    });
+  }
+});
+
+/**
+ * @route   PUT /api/budget/recurring/:recurringId
+ * @desc    Update a recurring item
+ * @access  Private
+ */
+router.put('/recurring/:recurringId', [
+  param('recurringId').isUUID().withMessage('Valid recurring ID required'),
+  body('UserID').isUUID().withMessage('Valid user ID required'),
+  body('Description').optional().isLength({ max: 150 }).withMessage('Description max 150 characters'),
+  body('TableName').optional().isLength({ max: 50 }).withMessage('TableName max 50 characters'),
+  body('Amount').optional().isFloat({ min: 0 }).withMessage('Amount must be a non-negative number'),
+  body('StartDate').optional().isISO8601().withMessage('Valid start date required'),
+  body('EndDate').optional().isISO8601().withMessage('Valid end date required'),
+  body('Frequency').optional().isLength({ min: 1, max: 20 }).withMessage('Frequency max 20 characters'),
+  body('Interval').optional().isInt({ min: 1 }).withMessage('Interval must be at least 1'),
+  body('NextOccurrence').optional().isISO8601().withMessage('Valid next occurrence date required'),
+  body('IsActive').optional().isBoolean().withMessage('IsActive must be boolean'),
+  body('Notes').optional().isLength({ max: 255 }).withMessage('Notes max 255 characters')
+], handleValidationErrors, async (req, res) => {
+  try {
+    const { recurringId } = req.params;
+    const {
+      UserID,
+      Description,
+      TableName,
+      Amount,
+      StartDate,
+      EndDate,
+      Frequency,
+      Interval,
+      NextOccurrence,
+      IsActive,
+      Notes
+    } = req.body;
+
+    if (UserID.toUpperCase() !== req.user.UserId.toUpperCase()) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to update this recurring item'
+      });
+    }
+
+    const queryText = `
+      SET NOCOUNT ON;
+
+      UPDATE RecurringItems
+      SET
+        Description   = COALESCE(@description, Description),
+        TableName     = COALESCE(@tableName, TableName),
+        Amount        = COALESCE(@amount, Amount),
+        StartDate     = COALESCE(@startDate, StartDate),
+        EndDate       = COALESCE(@endDate, EndDate),
+        Frequency     = COALESCE(@frequency, Frequency),
+        Interval      = COALESCE(@interval, Interval),
+        NextOccurrence= COALESCE(@nextOccurrence, NextOccurrence),
+        IsActive      = COALESCE(@isActive, IsActive),
+        Notes         = COALESCE(@notes, Notes),
+        LastEdit      = GETDATE()
+      WHERE RecurringID = @recurringId
+        AND UserID = @userId;
+
+      SELECT @@ROWCOUNT AS RowsAffected;
+    `;
+
+    const result = await executeQuery(queryText, {
+      recurringId: { type: sql.UniqueIdentifier, value: recurringId },
+      userId: { type: sql.UniqueIdentifier, value: UserID },
+      description: { type: sql.VarChar(150), value: Description || null },
+      tableName: { type: sql.VarChar(50), value: TableName || null },
+      amount: {
+        type: sql.Float,
+        value: typeof Amount === 'number' ? Amount : Amount ? parseFloat(Amount) : null
+      },
+      startDate: { type: sql.Date, value: StartDate ? new Date(StartDate) : null },
+      endDate: { type: sql.Date, value: EndDate ? new Date(EndDate) : null },
+      frequency: { type: sql.VarChar(20), value: Frequency || null },
+      interval: { type: sql.Int, value: Interval || null },
+      nextOccurrence: {
+        type: sql.Date,
+        value: NextOccurrence ? new Date(NextOccurrence) : null
+      },
+      isActive: {
+        type: sql.Bit,
+        value:
+          typeof IsActive === 'boolean'
+            ? IsActive
+            : IsActive === null || IsActive === undefined
+            ? null
+            : IsActive
+      },
+      notes: { type: sql.VarChar(255), value: Notes || null }
+    });
+
+    const row = result.recordset?.[0];
+
+    if (!row || row.RowsAffected === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Recurring item not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Recurring item updated successfully'
+    });
+  } catch (error) {
+    console.error('Update recurring item error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update recurring item'
+    });
+  }
+});
+
+/**
+ * @route   DELETE /api/budget/recurring/:recurringId
+ * @desc    Delete a recurring item
+ * @access  Private
+ */
+router.delete('/recurring/:recurringId', [
+  param('recurringId').isUUID().withMessage('Valid recurring ID required'),
+  body('userId').isUUID().withMessage('Valid user ID required')
+], handleValidationErrors, async (req, res) => {
+  try {
+    const { recurringId } = req.params;
+    const { userId } = req.body;
+
+    if (userId.toUpperCase() !== req.user.UserId.toUpperCase()) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to delete this recurring item'
+      });
+    }
+
+    const queryText = `
+      DELETE FROM RecurringItems
+      WHERE RecurringID = @recurringId
+        AND UserID = @userId;
+
+      SELECT @@ROWCOUNT AS RowsAffected;
+    `;
+
+    const result = await executeQuery(queryText, {
+      recurringId: { type: sql.UniqueIdentifier, value: recurringId },
+      userId: { type: sql.UniqueIdentifier, value: userId }
+    });
+
+    const row = result.recordset?.[0];
+
+    if (!row || row.RowsAffected === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Recurring item not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Recurring item deleted successfully'
+    });
+  } catch (error) {
+    console.error('Delete recurring item error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to delete recurring item'
+    });
+  }
+});
+
+/**
+ * @route   POST /api/budget/budgets
+ * @desc    Create or update a budget for a user/category/period (upsert)
+ * @access  Private
+ */
+router.post('/budgets', [
+  body('UserID').isUUID().withMessage('Valid user ID required'),
+  body('Username').isLength({ min: 1, max: 17 }).withMessage('Username required (max 17 chars)'),
+  body('CategoryName').isLength({ min: 1, max: 50 }).withMessage('Category name required (max 50 chars)'),
+  body('PeriodStart').isISO8601().withMessage('Valid period start date required'),
+  body('PeriodEnd').isISO8601().withMessage('Valid period end date required'),
+  body('Amount').isFloat({ min: 0 }).withMessage('Amount must be a non-negative number'),
+  body('Currency').optional().isLength({ min: 1, max: 10 }).withMessage('Currency max 10 characters')
+], handleValidationErrors, async (req, res) => {
+  try {
+    const {
+      UserID,
+      Username,
+      CategoryName,
+      PeriodStart,
+      PeriodEnd,
+      Amount,
+      Currency
+    } = req.body;
+
+    // Enforce ownership
+    if (UserID.toUpperCase() !== req.user.UserId.toUpperCase()) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to modify budgets for this user'
+      });
+    }
+
+    const periodStartDate = new Date(PeriodStart);
+    const periodEndDate = new Date(PeriodEnd);
+
+    const queryText = `
+      SET NOCOUNT ON;
+
+      IF EXISTS (
+        SELECT 1
+        FROM Budgets
+        WHERE UserID = @userId
+          AND CategoryName = @categoryName
+          AND PeriodStart = @periodStart
+          AND PeriodEnd = @periodEnd
+      )
+      BEGIN
+        UPDATE Budgets
+        SET Amount = @amount,
+            Currency = @currency,
+            LastEdit = GETDATE()
+        WHERE UserID = @userId
+          AND CategoryName = @categoryName
+          AND PeriodStart = @periodStart
+          AND PeriodEnd = @periodEnd;
+      END
+      ELSE
+      BEGIN
+        INSERT INTO Budgets (UserID, Username, CategoryName, PeriodStart, PeriodEnd, Amount, Currency)
+        VALUES (@userId, @username, @categoryName, @periodStart, @periodEnd, @amount, @currency);
+      END
+
+      SELECT TOP 1 BudgetID, UserID, Username, CategoryName, PeriodStart, PeriodEnd, Amount, Currency, CreationTime, LastEdit
+      FROM Budgets
+      WHERE UserID = @userId
+        AND CategoryName = @categoryName
+        AND PeriodStart = @periodStart
+        AND PeriodEnd = @periodEnd;
+    `;
+
+    const result = await executeQuery(queryText, {
+      userId: { type: sql.UniqueIdentifier, value: UserID },
+      username: { type: sql.VarChar(17), value: Username },
+      categoryName: { type: sql.VarChar(50), value: CategoryName },
+      periodStart: { type: sql.Date, value: periodStartDate },
+      periodEnd: { type: sql.Date, value: periodEndDate },
+      amount: { type: sql.Float, value: Amount },
+      currency: { type: sql.VarChar(10), value: Currency || 'USD' }
+    });
+
+    const budget = result.recordset?.[0];
+
+    res.status(201).json({
+      success: true,
+      message: 'Budget saved successfully',
+      budget
+    });
+  } catch (error) {
+    console.error('Create/update budget error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to save budget'
+    });
+  }
+});
+
+/**
+ * @route   PUT /api/budget/budgets/:budgetId
+ * @desc    Update a specific budget
+ * @access  Private
+ */
+router.put('/budgets/:budgetId', [
+  param('budgetId').isUUID().withMessage('Valid budget ID required'),
+  body('UserID').isUUID().withMessage('Valid user ID required'),
+  body('CategoryName').optional().isLength({ min: 1, max: 50 }).withMessage('Category name max 50 chars'),
+  body('PeriodStart').optional().isISO8601().withMessage('Valid period start date required'),
+  body('PeriodEnd').optional().isISO8601().withMessage('Valid period end date required'),
+  body('Amount').optional().isFloat({ min: 0 }).withMessage('Amount must be a non-negative number'),
+  body('Currency').optional().isLength({ min: 1, max: 10 }).withMessage('Currency max 10 characters')
+], handleValidationErrors, async (req, res) => {
+  try {
+    const { budgetId } = req.params;
+    const {
+      UserID,
+      CategoryName,
+      PeriodStart,
+      PeriodEnd,
+      Amount,
+      Currency
+    } = req.body;
+
+    // Enforce ownership
+    if (UserID.toUpperCase() !== req.user.UserId.toUpperCase()) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to update this budget'
+      });
+    }
+
+    const queryText = `
+      SET NOCOUNT ON;
+
+      UPDATE Budgets
+      SET 
+        CategoryName = COALESCE(@categoryName, CategoryName),
+        PeriodStart = COALESCE(@periodStart, PeriodStart),
+        PeriodEnd   = COALESCE(@periodEnd, PeriodEnd),
+        Amount      = COALESCE(@amount, Amount),
+        Currency    = COALESCE(@currency, Currency),
+        LastEdit    = GETDATE()
+      WHERE BudgetID = @budgetId
+        AND UserID = @userId;
+
+      IF @@ROWCOUNT = 0
+      BEGIN
+        SELECT CAST(0 AS bit) AS Success, 'Budget not found' AS Message;
+        RETURN;
+      END
+
+      SELECT CAST(1 AS bit) AS Success, 'Budget updated successfully' AS Message;
+
+      SELECT BudgetID, UserID, Username, CategoryName, PeriodStart, PeriodEnd, Amount, Currency, CreationTime, LastEdit
+      FROM Budgets
+      WHERE BudgetID = @budgetId
+        AND UserID = @userId;
+    `;
+
+    const result = await executeQuery(queryText, {
+      budgetId: { type: sql.UniqueIdentifier, value: budgetId },
+      userId: { type: sql.UniqueIdentifier, value: UserID },
+      categoryName: { type: sql.VarChar(50), value: CategoryName || null },
+      periodStart: { type: sql.Date, value: PeriodStart ? new Date(PeriodStart) : null },
+      periodEnd: { type: sql.Date, value: PeriodEnd ? new Date(PeriodEnd) : null },
+      amount: { type: sql.Float, value: typeof Amount === 'number' ? Amount : null },
+      currency: { type: sql.VarChar(10), value: Currency || null }
+    });
+
+    const [statusRow, budgetRow] = result.recordsets || [];
+    const status = Array.isArray(statusRow) ? statusRow[0] : null;
+
+    if (!status || !status.Success) {
+      return res.status(404).json({
+        success: false,
+        error: status?.Message || 'Budget not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: status.Message,
+      budget: Array.isArray(budgetRow) ? budgetRow[0] : null
+    });
+  } catch (error) {
+    console.error('Update budget error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update budget'
+    });
+  }
+});
+
+/**
+ * @route   DELETE /api/budget/budgets/:budgetId
+ * @desc    Delete a specific budget
+ * @access  Private
+ */
+router.delete('/budgets/:budgetId', [
+  param('budgetId').isUUID().withMessage('Valid budget ID required'),
+  body('userId').isUUID().withMessage('Valid user ID required')
+], handleValidationErrors, async (req, res) => {
+  try {
+    const { budgetId } = req.params;
+    const { userId } = req.body;
+
+    // Enforce ownership
+    if (userId.toUpperCase() !== req.user.UserId.toUpperCase()) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to delete this budget'
+      });
+    }
+
+    const queryText = `
+      DELETE FROM Budgets
+      WHERE BudgetID = @budgetId
+        AND UserID = @userId;
+
+      SELECT @@ROWCOUNT AS RowsAffected;
+    `;
+
+    const result = await executeQuery(queryText, {
+      budgetId: { type: sql.UniqueIdentifier, value: budgetId },
+      userId: { type: sql.UniqueIdentifier, value: userId }
+    });
+
+    const row = result.recordset?.[0];
+
+    if (!row || row.RowsAffected === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Budget not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Budget deleted successfully'
+    });
+  } catch (error) {
+    console.error('Delete budget error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to delete budget'
+    });
+  }
+});
+
+/**
  * @route   GET /api/budget/transactions/:userId
  * @desc    Get all transactions for user
  * @access  Private
@@ -248,7 +863,7 @@ router.get('/transactions/:userId', async (req, res) => {
  */
 router.get('/categories/:userId', [
   param('userId').isUUID().withMessage('Valid user ID required')
-], handleValidationErrors, /* validateOwnership, */ async (req, res) => {
+], handleValidationErrors, async (req, res) => {
   try {
     const { userId } = req.params;
 
@@ -284,9 +899,21 @@ router.post('/transactions', [
   body('Username').isLength({ min: 1, max: 17 }).withMessage('Username required (max 17 chars)'),
   body('TableName').isLength({ min: 1, max: 20 }).withMessage('Category required (max 20 chars)'),
   body('Description').optional().isLength({ max: 150 }).withMessage('Description max 150 characters'),
-  body('Amount').isFloat({ min: 0 }).withMessage('Valid amount required'),
-  body('Due').optional().isISO8601().withMessage('Valid due date required'),
-  body('Date').optional().isISO8601().withMessage('Valid date required'),
+  body('Amount').custom((value) => {
+    if (value === undefined || value === null || value === '') return true; // Allow empty, will default to 0
+    const num = parseFloat(value);
+    return !isNaN(num) && num >= 0;
+  }).withMessage('Amount must be a valid positive number'),
+  body('Due').optional().custom((value) => {
+    if (!value) return true;
+    const date = new Date(value);
+    return !isNaN(date.getTime());
+  }).withMessage('Valid due date required'),
+  body('Date').optional().custom((value) => {
+    if (!value) return true;
+    const date = new Date(value);
+    return !isNaN(date.getTime());
+  }).withMessage('Valid date required'),
   body('Notes').optional().isLength({ max: 60 }).withMessage('Notes max 60 characters'),
   body('Category').optional().isLength({ max: 20 }).withMessage('Category max 20 characters'),
   body('Status').optional().isLength({ max: 20 }).withMessage('Status max 20 characters')
@@ -299,28 +926,51 @@ router.post('/transactions', [
       Description,
       Amount,
       Due,
-      Date,
+      Date: dateValue,
       Notes,
       Category,
       Status
     } = req.body;
 
-    // Validate ownership
-    if (UserID !== req.user.UserId) {
+    // Validate ownership (case-insensitive UUID comparison)
+    if (UserID.toUpperCase() !== req.user.UserId.toUpperCase()) {
       return res.status(403).json({
         success: false,
         error: 'Not authorized to create transaction for this user'
       });
     }
 
+    // Convert date strings to Date objects if needed
+    let dueDate = null;
+    if (Due) {
+      dueDate = new Date(Due);
+      if (isNaN(dueDate.getTime())) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid due date format'
+        });
+      }
+    }
+
+    let transactionDate = null;
+    if (dateValue) {
+      transactionDate = new Date(dateValue);
+      if (isNaN(transactionDate.getTime())) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid date format'
+        });
+      }
+    }
+
     const result = await executeStoredProcedure('sprb_InsertTransaction', {
       UserID: { type: sql.UniqueIdentifier, value: UserID },
       Username: { type: sql.VarChar(17), value: Username },
       TableName: { type: sql.VarChar(20), value: TableName },
-      Description: { type: sql.VarChar(35), value: Description || null },
+      Description: { type: sql.VarChar(150), value: Description || null },
       Amount: { type: sql.Float, value: Amount || null },
-      Due: { type: sql.DateTime, value: Due ? new Date(Due) : null },
-      Date: { type: sql.DateTime, value: Date ? new Date(Date) : null },
+      Due: { type: sql.DateTime, value: dueDate },
+      Date: { type: sql.DateTime, value: transactionDate },
       Notes: { type: sql.VarChar(60), value: Notes || null },
       Category: { type: sql.VarChar(20), value: Category || null },
       Status: { type: sql.VarChar(20), value: Status || null }
@@ -335,9 +985,15 @@ router.post('/transactions', [
     });
   } catch (error) {
     console.error('Create transaction error:', error);
+    console.error('Error details:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
     res.status(500).json({
       success: false,
-      error: 'Failed to create transaction'
+      error: 'Failed to create transaction: ' + (error.message || 'Unknown error'),
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
@@ -350,10 +1006,22 @@ router.post('/transactions', [
 router.put('/transactions/:transactionId', [
   param('transactionId').isUUID().withMessage('Valid transaction ID required'),
   body('UserID').isUUID().withMessage('Valid user ID required'),
-  body('Description').optional().isLength({ max: 35 }).withMessage('Description max 35 characters'),
-  body('Amount').optional().isFloat({ min: 0 }).withMessage('Valid amount required'),
-  body('Due').optional().isISO8601().withMessage('Valid due date required'),
-  body('Date').optional().isISO8601().withMessage('Valid date required'),
+  body('Description').optional().isLength({ max: 150 }).withMessage('Description max 150 characters'),
+  body('Amount').optional().custom((value) => {
+    if (value === undefined || value === null || value === '') return true;
+    const num = parseFloat(value);
+    return !isNaN(num) && num >= 0;
+  }).withMessage('Amount must be a valid positive number'),
+  body('Due').optional().custom((value) => {
+    if (!value) return true;
+    const date = new Date(value);
+    return !isNaN(date.getTime());
+  }).withMessage('Valid due date required'),
+  body('Date').optional().custom((value) => {
+    if (!value) return true;
+    const date = new Date(value);
+    return !isNaN(date.getTime());
+  }).withMessage('Valid date required'),
   body('Notes').optional().isLength({ max: 60 }).withMessage('Notes max 60 characters'),
   body('Category').optional().isLength({ max: 20 }).withMessage('Category max 20 characters'),
   body('Status').optional().isLength({ max: 20 }).withMessage('Status max 20 characters')
@@ -365,26 +1033,49 @@ router.put('/transactions/:transactionId', [
       Description,
       Amount,
       Due,
-      Date,
+      Date: dateValue,
       Notes,
       Category,
       Status
     } = req.body;
 
-    // Validate ownership
-    if (UserID !== req.user.UserId) {
+    // Validate ownership (case-insensitive UUID comparison)
+    if (UserID.toUpperCase() !== req.user.UserId.toUpperCase()) {
       return res.status(403).json({
         success: false,
         error: 'Not authorized to update this transaction'
       });
     }
 
+    // Convert date strings to Date objects if needed
+    let dueDate = null;
+    if (Due) {
+      dueDate = new Date(Due);
+      if (isNaN(dueDate.getTime())) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid due date format'
+        });
+      }
+    }
+
+    let transactionDate = null;
+    if (dateValue) {
+      transactionDate = new Date(dateValue);
+      if (isNaN(transactionDate.getTime())) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid date format'
+        });
+      }
+    }
+
     const result = await executeStoredProcedure('sprb_UpdateTransaction', {
       TransactionId: { type: sql.UniqueIdentifier, value: transactionId },
-      Description: { type: sql.VarChar(35), value: Description || null },
+      Description: { type: sql.VarChar(150), value: Description || null },
       Amount: { type: sql.Float, value: Amount || null },
-      Due: { type: sql.DateTime, value: Due ? new Date(Due) : null },
-      Date: { type: sql.DateTime, value: Date ? new Date(Date) : null },
+      Due: { type: sql.DateTime, value: dueDate },
+      Date: { type: sql.DateTime, value: transactionDate },
       Notes: { type: sql.VarChar(60), value: Notes || null },
       Category: { type: sql.VarChar(20), value: Category || null },
       Status: { type: sql.VarChar(20), value: Status || null },
@@ -406,9 +1097,15 @@ router.put('/transactions/:transactionId', [
     }
   } catch (error) {
     console.error('Update transaction error:', error);
+    console.error('Error details:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
     res.status(500).json({
       success: false,
-      error: 'Failed to update transaction'
+      error: 'Failed to update transaction: ' + (error.message || 'Unknown error'),
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
@@ -426,8 +1123,8 @@ router.delete('/transactions/:transactionId', [
     const { transactionId } = req.params;
     const { userId } = req.body;
 
-    // Validate ownership
-    if (userId !== req.user.UserId) {
+    // Validate ownership (case-insensitive UUID comparison)
+    if (userId.toUpperCase() !== req.user.UserId.toUpperCase()) {
       return res.status(403).json({
         success: false,
         error: 'Not authorized to delete this transaction'
@@ -539,8 +1236,8 @@ router.post('/income', [
       PaycheckStatus
     } = req.body;
 
-    // Validate ownership
-    if (UserID !== req.user.UserId) {
+    // Validate ownership (case-insensitive UUID comparison)
+    if (UserID.toUpperCase() !== req.user.UserId.toUpperCase()) {
       return res.status(403).json({
         success: false,
         error: 'Not authorized to create income for this user'
@@ -586,7 +1283,7 @@ router.post('/income', [
  */
 router.get('/windows/:userId', [
   param('userId').isUUID().withMessage('Valid user ID required')
-], handleValidationErrors, validateOwnership, async (req, res) => {
+], handleValidationErrors, async (req, res) => {
   try {
     const { userId } = req.params;
 
@@ -635,8 +1332,8 @@ router.post('/windows', [
       Height
     } = req.body;
 
-    // Validate ownership
-    if (UserID !== req.user.UserId) {
+    // Validate ownership (case-insensitive UUID comparison)
+    if (UserID.toUpperCase() !== req.user.UserId.toUpperCase()) {
       return res.status(403).json({
         success: false,
         error: 'Not authorized to create window for this user'
@@ -705,8 +1402,8 @@ router.put('/windows/:windowId', [
       ZIndex
     } = req.body;
 
-    // Validate ownership
-    if (UserID !== req.user.UserId) {
+    // Validate ownership (case-insensitive UUID comparison)
+    if (UserID.toUpperCase() !== req.user.UserId.toUpperCase()) {
       return res.status(403).json({
         success: false,
         error: 'Not authorized to update this window'
@@ -755,8 +1452,8 @@ router.delete('/windows/:windowId', [
     const { windowId } = req.params;
     const { userId } = req.body;
 
-    // Validate ownership
-    if (userId !== req.user.UserId) {
+    // Validate ownership (case-insensitive UUID comparison)
+    if (userId.toUpperCase() !== req.user.UserId.toUpperCase()) {
       return res.status(403).json({
         success: false,
         error: 'Not authorized to delete this window'
@@ -794,7 +1491,7 @@ router.get('/windows/:userId/transactions/:categoryName', [
   query('startDate').optional().isISO8601().withMessage('Valid start date required'),
   query('endDate').optional().isISO8601().withMessage('Valid end date required'),
   query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Limit must be between 1 and 100')
-], handleValidationErrors, validateOwnership, async (req, res) => {
+], handleValidationErrors, async (req, res) => {
   try {
     const { userId, categoryName } = req.params;
     const { startDate, endDate, limit } = req.query;
@@ -833,8 +1530,8 @@ router.post('/windows/positions', [
   try {
     const { UserID, WindowUpdates } = req.body;
 
-    // Validate ownership
-    if (UserID !== req.user.UserId) {
+    // Validate ownership (case-insensitive UUID comparison)
+    if (UserID.toUpperCase() !== req.user.UserId.toUpperCase()) {
       return res.status(403).json({
         success: false,
         error: 'Not authorized to update windows for this user'
@@ -869,45 +1566,48 @@ router.post('/windows/positions', [
 router.put('/income/:incomeId', [
   param('incomeId').isUUID().withMessage('Valid income ID required'),
   body('UserID').isUUID().withMessage('Valid user ID required'),
-  body('Paycheck').optional().isLength({ max: 35 }).withMessage('Paycheck description max 35 characters'),
-  body('GrossIncome').optional().isFloat({ min: 0 }).withMessage('Valid gross income required'),
-  body('NetIncome').optional().isFloat({ min: 0 }).withMessage('Valid net income required'),
-  body('TitheAmount').optional().isFloat({ min: 0 }).withMessage('Valid tithe amount required'),
-  body('TithePercentage').optional().isFloat({ min: 0, max: 100 }).withMessage('Valid tithe percentage required'),
-  body('PaycheckDate').optional().isISO8601().withMessage('Valid paycheck date required'),
-  body('PaycheckStatus').optional().isIn(['pending', 'received']).withMessage('Valid paycheck status required'),
-  body('TitheStatus').optional().isIn(['unpaid', 'paid']).withMessage('Valid tithe status required'),
-  body('Notes').optional().isLength({ max: 100 }).withMessage('Notes max 100 characters')
-], handleValidationErrors, validateOwnership, async (req, res) => {
+  body('Description').optional().isLength({ max: 45 }).withMessage('Description max 45 characters'),
+  body('Gross').optional().isFloat({ min: 0 }).withMessage('Valid gross amount required'),
+  body('Net').optional().isFloat({ min: 0 }).withMessage('Valid net amount required'),
+  body('Tithe').optional().isFloat({ min: 0 }).withMessage('Valid tithe amount required'),
+  body('Date').optional().isLength({ max: 45 }).withMessage('Date max 45 characters'),
+  body('PaycheckStatus').optional().isLength({ max: 45 }).withMessage('Paycheck status max 45 characters'),
+  body('TitheStatus').optional().isLength({ max: 45 }).withMessage('Tithe status max 45 characters'),
+  body('Notes').optional().isLength({ max: 500 }).withMessage('Notes max 500 characters')
+], handleValidationErrors, async (req, res) => {
   try {
     const { incomeId } = req.params;
     const {
       UserID,
-      Username,
-      Paycheck,
-      GrossIncome,
-      NetIncome,
-      TitheAmount,
-      TithePercentage,
-      PaycheckDate,
+      Description,
+      Gross,
+      Net,
+      Tithe,
+      Date,
       PaycheckStatus,
       TitheStatus,
       Notes
     } = req.body;
 
+    // Validate ownership (case-insensitive UUID comparison)
+    if (UserID.toUpperCase() !== req.user.UserId.toUpperCase()) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to update this income record'
+      });
+    }
+
     const result = await executeStoredProcedure('sprb_UpdateIncome', {
       IncomeId: { type: sql.UniqueIdentifier, value: incomeId },
-      UserId: { type: sql.UniqueIdentifier, value: UserID },
-      Username: { type: sql.VarChar(17), value: Username },
-      Paycheck: { type: sql.VarChar(35), value: Paycheck },
-      GrossIncome: { type: sql.Money, value: GrossIncome },
-      NetIncome: { type: sql.Money, value: NetIncome },
-      TitheAmount: { type: sql.Money, value: TitheAmount },
-      TithePercentage: { type: sql.Float, value: TithePercentage },
-      PaycheckDate: { type: sql.VarChar(45), value: PaycheckDate },
-      PaycheckStatus: { type: sql.VarChar(20), value: PaycheckStatus },
-      TitheStatus: { type: sql.VarChar(20), value: TitheStatus },
-      Notes: { type: sql.VarChar(100), value: Notes }
+      UserID: { type: sql.UniqueIdentifier, value: UserID },
+      Description: { type: sql.VarChar(45), value: Description || null },
+      Gross: { type: sql.Float, value: Gross || null },
+      Net: { type: sql.Float, value: Net || null },
+      Tithe: { type: sql.Float, value: Tithe || null },
+      Date: { type: sql.VarChar(45), value: Date || null },
+      PaycheckStatus: { type: sql.VarChar(45), value: PaycheckStatus || null },
+      TitheStatus: { type: sql.VarChar(45), value: TitheStatus || null },
+      Notes: { type: sql.VarChar(sql.MAX), value: Notes || null }
     });
 
     const response = result.recordset[0];
@@ -939,14 +1639,22 @@ router.put('/income/:incomeId', [
 router.delete('/income/:incomeId', [
   param('incomeId').isUUID().withMessage('Valid income ID required'),
   body('userId').isUUID().withMessage('Valid user ID required')
-], handleValidationErrors, validateOwnership, async (req, res) => {
+], handleValidationErrors, async (req, res) => {
   try {
     const { incomeId } = req.params;
     const { userId } = req.body;
 
+    // Validate ownership (case-insensitive UUID comparison)
+    if (userId.toUpperCase() !== req.user.UserId.toUpperCase()) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to delete this income record'
+      });
+    }
+
     const result = await executeStoredProcedure('sprb_DeleteIncome', {
       IncomeId: { type: sql.UniqueIdentifier, value: incomeId },
-      UserId: { type: sql.UniqueIdentifier, value: userId }
+      UserID: { type: sql.UniqueIdentifier, value: userId }
     });
 
     const response = result.recordset[0];

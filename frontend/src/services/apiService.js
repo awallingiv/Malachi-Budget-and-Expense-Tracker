@@ -1,10 +1,47 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 
-// Configure base URL - dynamically set based on environment
-const API_BASE_URL = __DEV__ 
-  ? 'http://localhost:3002/api'  // Development
-  : 'https://budget.austinwalling.dev/api'; // Production - UPDATE THIS!
+/**
+ * Resolve the API base URL with several fallbacks so Expo clients
+ * running on devices/emulators can talk to the local backend.
+ */
+const resolveApiBaseUrl = () => {
+  const envOverride =
+    process.env.EXPO_PUBLIC_API_BASE_URL ||
+    process.env.REACT_APP_API_BASE_URL ||
+    process.env.API_BASE_URL;
+
+  if (envOverride) {
+    return envOverride.replace(/\/$/, '');
+  }
+
+  if (!__DEV__) {
+    return 'https://budget.austinwalling.dev/api';
+  }
+
+  // Try to infer the LAN IP from Expo/Metro host
+  const expoHost =
+    Constants.expoConfig?.hostUri ||
+    Constants.expoConfig?.debuggerHost ||
+    Constants.manifest?.debuggerHost;
+
+  if (expoHost) {
+    const host = expoHost.split(':')[0];
+    return `http://${host}:3002/api`;
+  }
+
+  // Fallback to the current browser host (useful for web builds)
+  if (typeof window !== 'undefined' && window.location?.hostname) {
+    return `${window.location.protocol}//${window.location.hostname}:3002/api`;
+  }
+
+  // Last resort
+  return 'http://localhost:3002/api';
+};
+
+const API_BASE_URL = resolveApiBaseUrl();
+console.log('🌐 API Base URL:', API_BASE_URL);
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -77,13 +114,33 @@ export const authService = {
   },
 
   register: async (username, password, email, name) => {
-    const response = await api.post('/auth/register', {
-      username,
-      password,
-      email,
-      name
-    });
-    return response.data;
+    console.log('🔐 apiService.register() called');
+    console.log('📤 Request details:');
+    console.log('  - URL:', API_BASE_URL + '/auth/register');
+    console.log('  - Method: POST');
+    console.log('  - Username:', username);
+    console.log('  - Email:', email);
+    console.log('  - Name:', name);
+    console.log('  - Password: [HIDDEN - ' + password.length + ' characters]');
+    
+    try {
+      const response = await api.post('/auth/register', {
+        username,
+        password,
+        email,
+        name
+      });
+      console.log('📥 Register API Response received:');
+      console.log('  - Status:', response.status);
+      console.log('  - Data:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('💥 Register API Request failed:');
+      console.error('  - Error:', error.message);
+      console.error('  - Response:', error.response?.data);
+      console.error('  - Status:', error.response?.status);
+      throw error;
+    }
   },
 
   validateUser: async (usernameOrEmail, password, validationCode) => {
@@ -91,6 +148,13 @@ export const authService = {
       usernameOrEmail,
       password,
       validationCode
+    });
+    return response.data;
+  },
+
+  forgotPassword: async (usernameOrEmail) => {
+    const response = await api.post('/auth/forgot-password', {
+      usernameOrEmail
     });
     return response.data;
   }
@@ -205,6 +269,56 @@ export const budgetService = {
     const response = await api.post('/budget/windows/positions', {
       UserID: userId,
       WindowUpdates: windowUpdates
+    });
+    return response.data;
+  },
+
+  // Budgets (planned vs actual)
+  getBudgets: async (userId, params = {}) => {
+    const response = await api.get(`/budget/budgets/${userId}`, {
+      params
+    });
+    return response.data;
+  },
+
+  upsertBudget: async (budgetData) => {
+    const response = await api.post('/budget/budgets', budgetData);
+    return response.data;
+  },
+
+  updateBudget: async (budgetId, budgetData) => {
+    const response = await api.put(`/budget/budgets/${budgetId}`, budgetData);
+    return response.data;
+  },
+
+  deleteBudget: async (budgetId, userId) => {
+    const response = await api.delete(`/budget/budgets/${budgetId}`, {
+      data: { userId }
+    });
+    return response.data;
+  },
+
+  // Recurring items (bills, subscriptions, recurring income)
+  getRecurringItems: async (userId, params = {}) => {
+    const response = await api.get(`/budget/recurring/${userId}`, {
+      params,
+    });
+    return response.data;
+  },
+
+  createRecurringItem: async (data) => {
+    const response = await api.post('/budget/recurring', data);
+    return response.data;
+  },
+
+  updateRecurringItem: async (recurringId, data) => {
+    const response = await api.put(`/budget/recurring/${recurringId}`, data);
+    return response.data;
+  },
+
+  deleteRecurringItem: async (recurringId, userId) => {
+    const response = await api.delete(`/budget/recurring/${recurringId}`, {
+      data: { userId },
     });
     return response.data;
   }

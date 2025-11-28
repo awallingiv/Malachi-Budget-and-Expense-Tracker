@@ -221,7 +221,7 @@ const CategoryCard = ({ category, index, onPress }) => {
   );
 };
 
-const ModernDashboard = ({ onSwitchMode }) => {
+const ModernDashboard = () => {
   const { user, logout } = useAuth();
   const { isDark, toggleTheme } = useTheme();
   const colors = getColors(isDark);
@@ -233,6 +233,8 @@ const ModernDashboard = ({ onSwitchMode }) => {
   const [transactions, setTransactions] = useState([]);
   const [incomeList, setIncomeList] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [budgets, setBudgets] = useState([]);
+  const [selectedCashflowMonth, setSelectedCashflowMonth] = useState(null);
   
   // Modal states
   const [showIncomeModal, setShowIncomeModal] = useState(false);
@@ -276,17 +278,28 @@ const ModernDashboard = ({ onSwitchMode }) => {
     
     try {
       setLoading(true);
-      const [stats, txns, income, cats] = await Promise.all([
+      const now = new Date();
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+      const [stats, txns, income, cats, budgetRows] = await Promise.all([
         budgetService.getDashboardStats(user.UserId).catch(() => null),
         budgetService.getTransactions(user.UserId).catch(() => []),
         budgetService.getIncome(user.UserId).catch(() => []),
         budgetService.getUserCategories(user.UserId).catch(() => []),
+        budgetService
+          .getBudgets(user.UserId, {
+            startDate: startOfMonth.toISOString().split('T')[0],
+            endDate: endOfMonth.toISOString().split('T')[0],
+          })
+          .catch(() => []),
       ]);
       
       setDashboardData(stats);
       setTransactions(txns || []);
       setIncomeList(income || []);
       setCategories(cats || []);
+      setBudgets(budgetRows || []);
     } catch (error) {
       console.error('Failed to load dashboard:', error);
     } finally {
@@ -331,6 +344,104 @@ const ModernDashboard = ({ onSwitchMode }) => {
   }, {});
   
   const categoryList = Object.values(categoryTotals).sort((a, b) => b.totalAmount - a.totalAmount);
+
+  // Budgets summary: planned vs actual for current month
+  const budgetsWithActuals = budgets.map((b) => {
+    const planned = parseFloat(b.Amount) || 0;
+    const actual = categoryTotals[b.CategoryName]?.totalAmount || 0;
+    const remaining = planned - actual;
+    const usedPct = planned > 0 ? actual / planned : 0;
+    return {
+      ...b,
+      planned,
+      actual,
+      remaining,
+      usedPct,
+    };
+  });
+
+  const totalPlannedBudget = budgetsWithActuals.reduce((sum, b) => sum + b.planned, 0);
+  const totalActualBudget = budgetsWithActuals.reduce((sum, b) => sum + b.actual, 0);
+  const budgetNet = totalPlannedBudget - totalActualBudget;
+
+  const atRiskBudgets = [...budgetsWithActuals]
+    .filter((b) => b.planned > 0)
+    .sort((a, b) => b.usedPct - a.usedPct)
+    .slice(0, 3);
+
+  // Monthly cashflow (income, expenses, net) by month
+  const monthlyMap = transactions.reduce((acc, txn) => {
+    const date = new Date(txn.Date || txn.CreationTime);
+    if (isNaN(date.getTime())) return acc;
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const key = `${year}-${String(month + 1).padStart(2, '0')}`;
+    if (!acc[key]) {
+      acc[key] = {
+        key,
+        label: date.toLocaleDateString(undefined, { month: 'short', year: 'numeric' }),
+        start: new Date(year, month, 1),
+        end: new Date(year, month + 1, 0),
+        income: 0,
+        expenses: 0,
+      };
+    }
+    acc[key].expenses += parseFloat(txn.Amount) || 0;
+    return acc;
+  }, {});
+
+  incomeList.forEach((inc) => {
+    const rawDate = inc.Date || inc.CreationTime;
+    const date = rawDate ? new Date(rawDate) : null;
+    if (!date || isNaN(date.getTime())) return;
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const key = `${year}-${String(month + 1).padStart(2, '0')}`;
+    if (!monthlyMap[key]) {
+      monthlyMap[key] = {
+        key,
+        label: date.toLocaleDateString(undefined, { month: 'short', year: 'numeric' }),
+        start: new Date(year, month, 1),
+        end: new Date(year, month + 1, 0),
+        income: 0,
+        expenses: 0,
+      };
+    }
+    const net = parseFloat(inc.Net) || parseFloat(inc.amount) || 0;
+    monthlyMap[key].income += net;
+  });
+
+  const monthlyCashflowData = Object.values(monthlyMap)
+    .map((m) => ({
+      ...m,
+      net: (m.income || 0) - (m.expenses || 0),
+    }))
+    .sort((a, b) => a.start - b.start);
+
+  const lastMonths = monthlyCashflowData.slice(-6);
+  const activeMonthKey =
+    selectedCashflowMonth || (lastMonths.length ? lastMonths[lastMonths.length - 1].key : null);
+  const activeMonth =
+    lastMonths.find((m) => m.key === activeMonthKey) || lastMonths[lastMonths.length - 1] || null;
+
+  let cashflowCategories = [];
+  if (activeMonth) {
+    const map = transactions.reduce((acc, txn) => {
+      const date = new Date(txn.Date || txn.CreationTime);
+      if (isNaN(date.getTime())) return acc;
+      if (date < activeMonth.start || date > activeMonth.end) return acc;
+      const table = txn.TableName || 'Other';
+      if (!acc[table]) {
+        acc[table] = { TableName: table, totalAmount: 0, transactionCount: 0 };
+      }
+      acc[table].totalAmount += parseFloat(txn.Amount) || 0;
+      acc[table].transactionCount += 1;
+      return acc;
+    }, {});
+    cashflowCategories = Object.values(map)
+      .sort((a, b) => b.totalAmount - a.totalAmount)
+      .slice(0, 3);
+  }
 
   // Auto-calculate tithe (10%)
   useEffect(() => {
@@ -544,9 +655,6 @@ const ModernDashboard = ({ onSwitchMode }) => {
             <TouchableOpacity style={[styles.refreshButton, { backgroundColor: colors.inputBg }]} onPress={toggleTheme}>
               <Text style={styles.refreshButtonText}>{isDark ? '☀️' : '🌙'}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.modeButton, { backgroundColor: colors.inputBg }]} onPress={onSwitchMode}>
-              <Text style={[styles.modeButtonText, { color: colors.text }]}>🖥️ Desktop</Text>
-            </TouchableOpacity>
             <TouchableOpacity style={[styles.logoutButton, { borderColor: colors.inputBorder }]} onPress={logout}>
               <Text style={[styles.logoutText, { color: colors.textMuted }]}>Sign Out</Text>
             </TouchableOpacity>
@@ -611,6 +719,106 @@ const ModernDashboard = ({ onSwitchMode }) => {
             </View>
           </View>
         </AnimatedCard>
+
+        {/* Budget Summary */}
+        {budgetsWithActuals.length > 0 && (
+          <AnimatedCard delay={230} style={styles.budgetSummaryCard}>
+            <Text style={styles.sectionTitle}>Budget Summary (This Month)</Text>
+            <View style={styles.budgetSummaryRow}>
+              <View style={styles.budgetSummaryItem}>
+                <Text style={styles.budgetSummaryLabel}>Planned</Text>
+                <Text style={styles.budgetSummaryValue}>
+                  {formatCurrency(totalPlannedBudget)}
+                </Text>
+              </View>
+              <View style={styles.budgetSummaryItem}>
+                <Text style={styles.budgetSummaryLabel}>Actual</Text>
+                <Text style={styles.budgetSummaryValue}>
+                  {formatCurrency(totalActualBudget)}
+                </Text>
+              </View>
+              <View style={styles.budgetSummaryItem}>
+                <Text style={styles.budgetSummaryLabel}>Remaining</Text>
+                <Text
+                  style={[
+                    styles.budgetSummaryValue,
+                    budgetNet >= 0 ? styles.incomeValue : styles.expenseValue,
+                  ]}
+                >
+                  {formatCurrency(budgetNet)}
+                </Text>
+              </View>
+            </View>
+
+            {atRiskBudgets.length > 0 && (
+              <>
+                <Text style={styles.budgetAtRiskTitle}>At-risk categories</Text>
+                {atRiskBudgets.map((b) => (
+                  <View key={b.BudgetID} style={styles.budgetAtRiskRow}>
+                    <Text style={styles.budgetAtRiskName}>{b.CategoryName}</Text>
+                    <Text
+                      style={[
+                        styles.budgetAtRiskPercent,
+                        b.usedPct >= 1
+                          ? styles.expenseValue
+                          : b.usedPct >= 0.8
+                          ? styles.titheValue
+                          : styles.incomeValue,
+                      ]}
+                    >
+                      {Math.round(b.usedPct * 100)}%
+                    </Text>
+                  </View>
+                ))}
+              </>
+            )}
+          </AnimatedCard>
+        )}
+
+        {/* Monthly Cashflow */}
+        {lastMonths.length > 0 && (
+          <AnimatedCard delay={240} style={styles.cashflowCard}>
+            <Text style={styles.sectionTitle}>Monthly Cashflow</Text>
+            {lastMonths.map((m) => (
+              <TouchableOpacity
+                key={m.key}
+                style={[
+                  styles.cashflowRow,
+                  activeMonth && activeMonth.key === m.key && styles.cashflowRowActive,
+                ]}
+                onPress={() => setSelectedCashflowMonth(m.key)}
+              >
+                <Text style={styles.cashflowMonth}>{m.label}</Text>
+                <Text style={styles.cashflowIncome}>{formatCurrency(m.income)}</Text>
+                <Text style={styles.cashflowExpense}>{formatCurrency(m.expenses)}</Text>
+                <Text
+                  style={[
+                    styles.cashflowNet,
+                    m.net >= 0 ? styles.incomeValue : styles.expenseValue,
+                  ]}
+                >
+                  {formatCurrency(m.net)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+
+            {activeMonth && cashflowCategories.length > 0 && (
+              <>
+                <Text style={styles.cashflowDetailTitle}>
+                  Top categories in {activeMonth.label}
+                </Text>
+                {cashflowCategories.map((cat) => (
+                  <View key={cat.TableName} style={styles.cashflowDetailRow}>
+                    <Text style={styles.cashflowDetailName}>{cat.TableName}</Text>
+                    <Text style={styles.cashflowDetailAmount}>
+                      {formatCurrency(cat.totalAmount)}
+                    </Text>
+                  </View>
+                ))}
+              </>
+            )}
+          </AnimatedCard>
+        )}
 
         {/* Categories */}
         {categoryList.length > 0 && (
@@ -689,10 +897,6 @@ const ModernDashboard = ({ onSwitchMode }) => {
             <TouchableOpacity style={styles.actionButton} onPress={loadAllData}>
               <Text style={styles.actionIcon}>📊</Text>
               <Text style={styles.actionLabel}>Refresh</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.actionButton} onPress={onSwitchMode}>
-              <Text style={styles.actionIcon}>🖥️</Text>
-              <Text style={styles.actionLabel}>Desktop</Text>
             </TouchableOpacity>
           </View>
         </AnimatedCard>
@@ -1102,6 +1306,102 @@ const styles = StyleSheet.create({
   },
   categoriesCard: {
     padding: 24,
+  },
+  budgetSummaryCard: {
+    padding: 24,
+  },
+  budgetSummaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  budgetSummaryItem: {
+    flex: 1,
+  },
+  budgetSummaryLabel: {
+    fontSize: 12,
+    color: defaultColors.textDim,
+    marginBottom: 4,
+  },
+  budgetSummaryValue: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  budgetAtRiskTitle: {
+    marginTop: 16,
+    fontSize: 14,
+    fontWeight: '600',
+    color: defaultColors.text,
+  },
+  budgetAtRiskRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  budgetAtRiskName: {
+    fontSize: 13,
+    color: defaultColors.textMuted,
+  },
+  budgetAtRiskPercent: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  cashflowCard: {
+    padding: 24,
+  },
+  cashflowRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  cashflowRowActive: {
+    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+    borderRadius: 8,
+  },
+  cashflowMonth: {
+    flex: 1.4,
+    color: defaultColors.text,
+  },
+  cashflowIncome: {
+    flex: 1,
+    textAlign: 'right',
+    color: defaultColors.success,
+    fontSize: 12,
+  },
+  cashflowExpense: {
+    flex: 1,
+    textAlign: 'right',
+    color: defaultColors.danger,
+    fontSize: 12,
+  },
+  cashflowNet: {
+    flex: 1,
+    textAlign: 'right',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  cashflowDetailTitle: {
+    marginTop: 12,
+    fontSize: 14,
+    fontWeight: '600',
+    color: defaultColors.text,
+  },
+  cashflowDetailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 4,
+  },
+  cashflowDetailName: {
+    fontSize: 13,
+    color: defaultColors.textMuted,
+  },
+  cashflowDetailAmount: {
+    fontSize: 13,
+    fontWeight: '600',
   },
   categoryGrid: {
     flexDirection: 'row',

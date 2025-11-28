@@ -3,10 +3,12 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import DashboardScreen from '../screens/DashboardScreen';
+import BudgetsScreen from '../screens/BudgetsScreen';
 import WindowsScreen from '../screens/WindowsScreen';
 import TransactionsScreen from '../screens/TransactionsScreen';
 import IncomeScreen from '../screens/IncomeScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import RecurringScreen from '../screens/RecurringScreen';
 
 const Tab = createBottomTabNavigator();
 
@@ -21,6 +23,10 @@ export default function MainNavigator() {
 
           if (route.name === 'Dashboard') {
             iconName = focused ? 'view-dashboard' : 'view-dashboard-outline';
+          } else if (route.name === 'Budgets') {
+            iconName = focused ? 'cash-check' : 'cash';
+          } else if (route.name === 'Recurring') {
+            iconName = focused ? 'calendar-clock' : 'calendar';
           } else if (route.name === 'Windows') {
             iconName = focused ? 'window-maximize' : 'window-restore';
           } else if (route.name === 'Transactions') {
@@ -56,6 +62,20 @@ export default function MainNavigator() {
         component={DashboardScreen}
         options={{
           tabBarLabel: 'Overview',
+        }}
+      />
+      <Tab.Screen 
+        name="Budgets" 
+        component={BudgetsScreen}
+        options={{
+          tabBarLabel: 'Budgets',
+        }}
+      />
+      <Tab.Screen 
+        name="Recurring" 
+        component={RecurringScreen}
+        options={{
+          tabBarLabel: 'Recurring',
         }}
       />
       <Tab.Screen 

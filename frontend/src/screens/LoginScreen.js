@@ -37,6 +37,8 @@ export default function LoginScreen({ navigation }) {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [focusedInput, setFocusedInput] = useState(null);
+  const [loginInfoMessage, setLoginInfoMessage] = useState('');
+  const [registerError, setRegisterError] = useState('');
   const [showRegister, setShowRegister] = useState(false);
   const [registerData, setRegisterData] = useState({
     username: '',
@@ -45,7 +47,7 @@ export default function LoginScreen({ navigation }) {
     confirmPassword: '',
     name: ''
   });
-  const { login, register } = useAuth();
+  const { login, register, forgotPassword } = useAuth();
 
   // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -94,39 +96,83 @@ export default function LoginScreen({ navigation }) {
     }
   };
 
+  const handleForgotPassword = async () => {
+    if (!usernameOrEmail) {
+      Alert.alert('Missing Information', 'Please enter your username or email first.');
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const result = await forgotPassword(usernameOrEmail);
+      setIsLoading(false);
+
+      if (result.success) {
+        Alert.alert(
+          'Password Reset',
+          'If an account with that username or email exists, a password reset email has been sent.'
+        );
+      } else {
+        Alert.alert('Password Reset Failed', result.message || 'Unable to start password reset.');
+      }
+    } catch (error) {
+      setIsLoading(false);
+      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
+    }
+  };
+
   const handleRegister = async () => {
+    console.log('🚀 handleRegister() called in LoginScreen');
     const { username, email, password, confirmPassword, name } = registerData;
+    console.log('📝 Register form data:', { username, email, name, password: password ? '[HIDDEN]' : 'EMPTY', confirmPassword: confirmPassword ? '[HIDDEN]' : 'EMPTY' });
     
     if (!username || !email || !password || !name) {
+      console.log('❌ Validation failed: missing fields', { username: !!username, email: !!email, password: !!password, name: !!name });
+      setRegisterError('Please fill in all fields.');
       Alert.alert('Missing Information', 'Please fill in all fields');
       return;
     }
     
     if (password !== confirmPassword) {
+      console.log('❌ Validation failed: passwords do not match');
+      setRegisterError('Passwords do not match.');
       Alert.alert('Password Mismatch', 'Passwords do not match');
       return;
     }
     
     if (password.length < 6) {
+      console.log('❌ Validation failed: password too short');
+      setRegisterError('Password must be at least 6 characters.');
       Alert.alert('Weak Password', 'Password must be at least 6 characters');
       return;
     }
 
+    console.log('✅ Validation passed, calling register()...');
     setIsLoading(true);
     
     try {
       const result = await register(username, password, email, name);
+      console.log('📥 Register result:', result);
       setIsLoading(false);
 
       if (result.success) {
-        Alert.alert('Success', 'Account created! Please check your email for validation code.', [
-          { text: 'OK', onPress: () => setShowRegister(false) }
-        ]);
+        console.log('✅ Registration successful!');
+        setRegisterError('');
+        // Pre-fill login form and show inline info message
+        setUsernameOrEmail(email || username);
+        setPassword('');
+        setShowRegister(false);
+        setLoginInfoMessage('Account created! Please check your email and verify your account, then sign in.');
       } else {
+        setRegisterError(result.message || 'Could not create account.');
+        console.log('❌ Registration failed:', result.message);
         Alert.alert('Registration Failed', result.message || 'Could not create account');
       }
     } catch (error) {
+      console.error('💥 Unexpected error in handleRegister:', error);
       setIsLoading(false);
+      setRegisterError('Network error. Please try again.');
       Alert.alert('Error', 'An unexpected error occurred. Please try again.');
     }
   };
@@ -189,8 +235,16 @@ export default function LoginScreen({ navigation }) {
                 <Text style={styles.cardTitle}>Welcome Back</Text>
                 <Text style={styles.cardSubtitle}>Sign in to continue</Text>
 
+                {loginInfoMessage ? (
+                  <Text style={styles.infoText}>{loginInfoMessage}</Text>
+                ) : null}
+
                 {renderInput('Username or Email', usernameOrEmail, setUsernameOrEmail, 'username')}
                 {renderInput('Password', password, setPassword, 'password', { secureTextEntry: true })}
+
+                <TouchableOpacity onPress={handleForgotPassword} disabled={isLoading}>
+                  <Text style={styles.linkText}>Forgot password?</Text>
+                </TouchableOpacity>
 
                 <TouchableOpacity 
                   style={[styles.primaryButton, isLoading && styles.buttonDisabled]}
@@ -219,6 +273,10 @@ export default function LoginScreen({ navigation }) {
               <>
                 <Text style={styles.cardTitle}>Create Account</Text>
                 <Text style={styles.cardSubtitle}>Start your financial journey</Text>
+
+                {registerError ? (
+                  <Text style={styles.errorText}>{registerError}</Text>
+                ) : null}
 
                 {renderInput('Full Name', registerData.name, (text) => setRegisterData(prev => ({ ...prev, name: text })), 'name', { autoCapitalize: 'words' })}
                 {renderInput('Username', registerData.username, (text) => setRegisterData(prev => ({ ...prev, username: text })), 'regUsername')}
@@ -450,5 +508,26 @@ const styles = StyleSheet.create({
     marginTop: 32,
     color: colors.textDim,
     fontSize: 12,
+    textAlign: 'center',
+  },
+  linkText: {
+    color: colors.textMuted,
+    textAlign: 'right',
+    marginTop: 8,
+    marginBottom: 8,
+    fontSize: 13,
+    textDecorationLine: 'underline',
+  },
+  infoText: {
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginBottom: 16,
+    fontSize: 14,
+  },
+  errorText: {
+    color: colors.error,
+    textAlign: 'center',
+    marginBottom: 16,
+    fontSize: 14,
   },
 });

@@ -13,33 +13,50 @@ export default function RegisterScreen({ navigation }) {
   const { register } = useAuth();
 
   const handleRegister = async () => {
+    console.log('🚀 handleRegister() called');
+    console.log('📝 Form values:', { username, email, name, password: '[HIDDEN]', confirmPassword: '[HIDDEN]' });
+    
     if (!username || !email || !password || !confirmPassword) {
+      console.log('❌ Validation failed: missing required fields');
       Alert.alert('Error', 'Please fill in all required fields');
       return;
     }
 
     if (password !== confirmPassword) {
+      console.log('❌ Validation failed: passwords do not match');
       Alert.alert('Error', 'Passwords do not match');
       return;
     }
 
     if (password.length > 16) {
+      console.log('❌ Validation failed: password too long');
       Alert.alert('Error', 'Password must be 16 characters or less');
       return;
     }
 
+    console.log('✅ Validation passed, calling register()...');
     setIsLoading(true);
-    const result = await register(username, password, email, name);
-    setIsLoading(false);
+    
+    try {
+      const result = await register(username, password, email, name);
+      console.log('📥 Register result:', result);
+      setIsLoading(false);
 
-    if (result.success) {
-      navigation.navigate('Validation', {
-        usernameOrEmail: username,
-        password: password,
-        validationCode: result.validationCode
-      });
-    } else {
-      Alert.alert('Registration Failed', result.message);
+      if (result.success) {
+        console.log('✅ Registration successful, navigating to Validation screen');
+        navigation.navigate('Validation', {
+          usernameOrEmail: username,
+          password: password,
+          validationCode: result.validationCode
+        });
+      } else {
+        console.log('❌ Registration failed:', result.message);
+        Alert.alert('Registration Failed', result.message);
+      }
+    } catch (error) {
+      console.error('💥 Unexpected error in handleRegister:', error);
+      setIsLoading(false);
+      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
     }
   };
 

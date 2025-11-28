@@ -1,17 +1,14 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Platform, View, Text, SafeAreaView } from 'react-native';
 import { Provider as PaperProvider } from 'react-native-paper';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
-import WebDashboard from './src/components/WebDashboardImproved';
 import ModernDashboard from './src/components/ModernDashboard';
 import DashboardScreen from './src/screens/DashboardScreenNew';
 import LoginScreen from './src/screens/LoginScreen';
 
 function AppContent() {
-  // Dashboard mode state: 'modern' or 'desktop'
-  const [dashboardMode, setDashboardMode] = useState('modern');
   const { isDark } = useTheme();
   
   try {
@@ -41,21 +38,9 @@ function AppContent() {
       return <LoginScreen />;
     }
     
-    // Platform-specific rendering with mode support
+    // Platform-specific rendering (desktop view deprecated; always use modern view on web)
     if (Platform.OS === 'web') {
-      if (dashboardMode === 'modern') {
-        return (
-          <ModernDashboard 
-            onSwitchMode={() => setDashboardMode('desktop')} 
-          />
-        );
-      } else {
-        return (
-          <WebDashboard 
-            onSwitchMode={() => setDashboardMode('modern')} 
-          />
-        );
-      }
+      return <ModernDashboard />;
     } else {
       return <DashboardScreen />;
     }

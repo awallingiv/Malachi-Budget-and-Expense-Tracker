@@ -151,6 +151,91 @@ GO
 ALTER TABLE [dbo].[CategoryWindows] CHECK CONSTRAINT [FK_CategoryWindows_Users_Username]
 GO
 
+/****** Object:  Table [dbo].[Budgets]    Script Date: 11/28/2025 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE TABLE [dbo].[Budgets](
+    [BudgetID] [uniqueidentifier] NOT NULL DEFAULT NEWSEQUENTIALID(),
+    [UserID] [uniqueidentifier] NOT NULL,
+    [Username] [varchar](17) NOT NULL,
+    [CategoryName] [varchar](50) NOT NULL,
+    [PeriodStart] [date] NOT NULL,
+    [PeriodEnd] [date] NOT NULL,
+    [Amount] [float] NOT NULL,
+    [Currency] [varchar](10) NOT NULL DEFAULT 'USD',
+    [CreationTime] [datetime] NOT NULL DEFAULT GETDATE(),
+    [LastEdit] [datetime] NOT NULL DEFAULT GETDATE(),
+ CONSTRAINT [PK_Budgets] PRIMARY KEY CLUSTERED 
+(
+    [BudgetID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+
+ALTER TABLE [dbo].[Budgets]  WITH CHECK ADD  CONSTRAINT [FK_Budgets_Users_UserId] FOREIGN KEY([UserID])
+REFERENCES [dbo].[Users] ([UserId])
+GO
+
+ALTER TABLE [dbo].[Budgets] CHECK CONSTRAINT [FK_Budgets_Users_UserId]
+GO
+
+ALTER TABLE [dbo].[Budgets]  WITH CHECK ADD  CONSTRAINT [FK_Budgets_Users_Username] FOREIGN KEY([Username])
+REFERENCES [dbo].[Users] ([Username])
+GO
+
+ALTER TABLE [dbo].[Budgets] CHECK CONSTRAINT [FK_Budgets_Users_Username]
+GO
+
+ALTER TABLE [dbo].[Budgets] ADD CONSTRAINT [UQ_Budgets_UserCategoryPeriod] UNIQUE ([UserID], [CategoryName], [PeriodStart], [PeriodEnd])
+GO
+
+/****** Object:  Table [dbo].[RecurringItems]    Script Date: 11/28/2025 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE TABLE [dbo].[RecurringItems](
+    [RecurringID] [uniqueidentifier] NOT NULL DEFAULT NEWSEQUENTIALID(),
+    [UserID] [uniqueidentifier] NOT NULL,
+    [Username] [varchar](17) NOT NULL,
+    [ItemType] [varchar](10) NOT NULL, -- 'expense' or 'income'
+    [Description] [varchar](150) NULL,
+    [TableName] [varchar](50) NULL,
+    [Amount] [float] NOT NULL,
+    [StartDate] [date] NOT NULL,
+    [EndDate] [date] NULL,
+    [Frequency] [varchar](20) NOT NULL, -- e.g., 'monthly', 'weekly', 'yearly'
+    [Interval] [int] NOT NULL DEFAULT 1, -- every N units of Frequency
+    [NextOccurrence] [date] NOT NULL,
+    [IsActive] [bit] NOT NULL DEFAULT 1,
+    [CreationTime] [datetime] NOT NULL DEFAULT GETDATE(),
+    [LastEdit] [datetime] NOT NULL DEFAULT GETDATE(),
+    [Notes] [varchar](255) NULL,
+ CONSTRAINT [PK_RecurringItems] PRIMARY KEY CLUSTERED 
+(
+    [RecurringID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+
+ALTER TABLE [dbo].[RecurringItems]  WITH CHECK ADD  CONSTRAINT [FK_RecurringItems_Users_UserId] FOREIGN KEY([UserID])
+REFERENCES [dbo].[Users] ([UserId])
+GO
+
+ALTER TABLE [dbo].[RecurringItems] CHECK CONSTRAINT [FK_RecurringItems_Users_UserId]
+GO
+
+ALTER TABLE [dbo].[RecurringItems]  WITH CHECK ADD  CONSTRAINT [FK_RecurringItems_Users_Username] FOREIGN KEY([Username])
+REFERENCES [dbo].[Users] ([Username])
+GO
+
+ALTER TABLE [dbo].[RecurringItems] CHECK CONSTRAINT [FK_RecurringItems_Users_Username]
+GO
+
 /****** Object:  StoredProcedure [dbo].[sprb_DeleteIncome]    Script Date: 11/9/2025 9:19:39 PM ******/
 SET ANSI_NULLS ON
 GO
