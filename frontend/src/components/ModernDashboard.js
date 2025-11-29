@@ -15,6 +15,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { budgetService } from '../services/apiService';
+import { useSmartDefaults } from '../hooks/useSmartDefaults';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -46,7 +47,8 @@ const defaultColors = getColors(true);
 const categoryColors = ['#00d4aa', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeaa7', '#ff6b6b', '#a29bfe', '#fd79a8'];
 
 // Animated card component
-const AnimatedCard = ({ children, delay = 0, style }) => {
+// Accepts an optional `cardStyle` so we can inject theme-aware colors (light/dark)
+const AnimatedCard = ({ children, delay = 0, style, cardStyle }) => {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
 
@@ -71,6 +73,7 @@ const AnimatedCard = ({ children, delay = 0, style }) => {
     <Animated.View
       style={[
         styles.card,
+        cardStyle,
         style,
         { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
       ]}
@@ -132,7 +135,10 @@ const ModalSelect = ({ label, value, options, onSelect }) => {
 };
 
 // Transaction row component
-const TransactionRow = ({ transaction, onEdit, onDelete }) => {
+const TransactionRow = ({ transaction, onEdit, onDelete, colors }) => {
+  // Fallback to default colors if not provided
+  const c = colors || defaultColors;
+  
   const formatDate = (dateStr) => {
     if (!dateStr) return '';
     const date = new Date(dateStr);
@@ -147,14 +153,14 @@ const TransactionRow = ({ transaction, onEdit, onDelete }) => {
         </Text>
       </View>
       <View style={styles.transactionInfo}>
-        <Text style={styles.transactionDesc} numberOfLines={1}>
+        <Text style={[styles.transactionDesc, { color: c.text }]} numberOfLines={1}>
           {transaction.Description || 'Transaction'}
         </Text>
-        <Text style={styles.transactionCategory}>
+        <Text style={[styles.transactionCategory, { color: c.textDim }]}>
           {transaction.TableName || 'General'} • {formatDate(transaction.Date || transaction.CreationTime)}
         </Text>
       </View>
-      <Text style={styles.transactionAmount}>
+      <Text style={[styles.transactionAmount, { color: c.danger }]}>
         -${(transaction.Amount || 0).toFixed(2)}
       </Text>
       <TouchableOpacity onPress={() => onEdit(transaction)} style={styles.transactionAction}>
@@ -165,7 +171,10 @@ const TransactionRow = ({ transaction, onEdit, onDelete }) => {
 };
 
 // Income row component
-const IncomeRow = ({ income, onEdit }) => {
+const IncomeRow = ({ income, onEdit, colors }) => {
+  // Fallback to default colors if not provided
+  const c = colors || defaultColors;
+  
   const formatDate = (dateStr) => {
     if (!dateStr) return '';
     return dateStr.split('T')[0];
@@ -177,18 +186,18 @@ const IncomeRow = ({ income, onEdit }) => {
         <Text style={styles.transactionIconText}>💵</Text>
       </View>
       <View style={styles.transactionInfo}>
-        <Text style={styles.transactionDesc} numberOfLines={1}>
+        <Text style={[styles.transactionDesc, { color: c.text }]} numberOfLines={1}>
           {income.Description || 'Income'}
         </Text>
-        <Text style={styles.transactionCategory}>
+        <Text style={[styles.transactionCategory, { color: c.textDim }]}>
           {formatDate(income.Date)} • Tithe: ${(income.Tithe || 0).toFixed(2)}
         </Text>
       </View>
       <View style={styles.incomeAmounts}>
-        <Text style={[styles.transactionAmount, { color: defaultColors.success }]}>
+        <Text style={[styles.transactionAmount, { color: c.success }]}>
           +${(income.Gross || 0).toFixed(2)}
         </Text>
-        <Text style={styles.incomeNet}>
+        <Text style={[styles.incomeNet, { color: c.textDim }]}>
           Net: ${(income.Net || 0).toFixed(2)}
         </Text>
       </View>
@@ -225,6 +234,14 @@ const ModernDashboard = () => {
   const { user, logout } = useAuth();
   const { isDark, toggleTheme } = useTheme();
   const colors = getColors(isDark);
+  const {
+    today,
+    lastExpenseCategory,
+    updateLastExpenseCategory,
+    lastIncomeTemplate,
+    updateLastIncomeTemplate,
+    defaultStatusForDate,
+  } = useSmartDefaults(user?.UserId);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   
@@ -249,7 +266,7 @@ const ModernDashboard = () => {
     Gross: '',
     Net: '',
     Tithe: '',
-    Date: new Date().toISOString().split('T')[0],
+    Date: today,
     TitheStatus: 'unpaid',
     PaycheckStatus: 'received'
   });
@@ -257,11 +274,11 @@ const ModernDashboard = () => {
   const [expenseForm, setExpenseForm] = useState({
     Description: '',
     Amount: '',
-    TableName: '',
-    Date: new Date().toISOString().split('T')[0],
+    TableName: lastExpenseCategory || '',
+    Date: today,
     Notes: '',
     Category: '',
-    Status: 'paid'
+    Status: defaultStatusForDate(today)
   });
 
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -471,6 +488,15 @@ const ModernDashboard = () => {
         await budgetService.updateIncome(editingItem.IncomeId, data);
       } else {
         await budgetService.createIncome(data);
+        // Remember last paycheck template for quick reuse
+        await updateLastIncomeTemplate({
+          Description: data.Description,
+          Gross: data.Gross,
+          Net: data.Net,
+          Tithe: data.Tithe,
+          TitheStatus: data.TitheStatus,
+          PaycheckStatus: data.PaycheckStatus,
+        });
       }
       
       setShowIncomeModal(false);
@@ -504,6 +530,9 @@ const ModernDashboard = () => {
         await budgetService.updateTransaction(editingItem.TransactionId, data);
       } else {
         await budgetService.createTransaction(data);
+        if (data.TableName) {
+          await updateLastExpenseCategory(data.TableName);
+        }
       }
       
       setShowExpenseModal(false);
@@ -515,39 +544,115 @@ const ModernDashboard = () => {
   };
 
   const handleDeleteIncome = async (incomeId) => {
-    Alert.alert('Delete Income', 'Are you sure?', [
-      { text: 'Cancel', style: 'cancel' },
-      { 
-        text: 'Delete', 
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await budgetService.deleteIncome(incomeId, user.UserId);
-            loadAllData();
-          } catch (error) {
-            Alert.alert('Error', 'Failed to delete income');
+    const performDelete = async () => {
+      try {
+        console.log('🗑 Deleting income from ModernDashboard:', { incomeId, userId: user.UserId });
+        const result = await budgetService.deleteIncome(incomeId, user.UserId);
+        console.log('✅ Delete income result:', result);
+
+        if (result && result.success) {
+          loadAllData();
+        } else {
+          const msg = result?.error || result?.message || 'Failed to delete income';
+          console.error('❌ Delete income failed:', msg);
+          if (Platform.OS !== 'web') {
+            Alert.alert('Error', msg);
+          } else if (typeof window !== 'undefined') {
+            window.alert(msg);
           }
         }
+      } catch (error) {
+        console.error('💥 Error deleting income:', error);
+        const msg =
+          error.response?.data?.error ||
+          error.response?.data?.message ||
+          error.message ||
+          'Failed to delete income';
+        if (Platform.OS !== 'web') {
+          Alert.alert('Error', msg);
+        } else if (typeof window !== 'undefined') {
+          window.alert(msg);
+        }
       }
-    ]);
+    };
+
+    if (Platform.OS === 'web') {
+      if (typeof window === 'undefined') {
+        // Fallback – just perform delete without confirm if window is not available
+        performDelete();
+        return;
+      }
+      const confirmed = window.confirm('Are you sure you want to delete this income?');
+      if (confirmed) {
+        performDelete();
+      }
+    } else {
+      Alert.alert('Delete Income', 'Are you sure?', [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: performDelete,
+        },
+      ]);
+    }
   };
 
   const handleDeleteExpense = async (transactionId) => {
-    Alert.alert('Delete Expense', 'Are you sure?', [
-      { text: 'Cancel', style: 'cancel' },
-      { 
-        text: 'Delete', 
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await budgetService.deleteTransaction(transactionId, user.UserId);
-            loadAllData();
-          } catch (error) {
-            Alert.alert('Error', 'Failed to delete expense');
+    const performDelete = async () => {
+      try {
+        console.log('🗑 Deleting expense from ModernDashboard:', {
+          transactionId,
+          userId: user.UserId,
+        });
+        const result = await budgetService.deleteTransaction(transactionId, user.UserId);
+        console.log('✅ Delete expense result:', result);
+
+        if (result && result.success) {
+          loadAllData();
+        } else {
+          const msg = result?.error || result?.message || 'Failed to delete expense';
+          console.error('❌ Delete expense failed:', msg);
+          if (Platform.OS !== 'web') {
+            Alert.alert('Error', msg);
+          } else if (typeof window !== 'undefined') {
+            window.alert(msg);
           }
         }
+      } catch (error) {
+        console.error('💥 Error deleting expense:', error);
+        const msg =
+          error.response?.data?.error ||
+          error.response?.data?.message ||
+          error.message ||
+          'Failed to delete expense';
+        if (Platform.OS !== 'web') {
+          Alert.alert('Error', msg);
+        } else if (typeof window !== 'undefined') {
+          window.alert(msg);
+        }
       }
-    ]);
+    };
+
+    if (Platform.OS === 'web') {
+      if (typeof window === 'undefined') {
+        performDelete();
+        return;
+      }
+      const confirmed = window.confirm('Are you sure you want to delete this expense?');
+      if (confirmed) {
+        performDelete();
+      }
+    } else {
+      Alert.alert('Delete Expense', 'Are you sure?', [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: performDelete,
+        },
+      ]);
+    }
   };
 
   const resetIncomeForm = () => {
@@ -556,7 +661,7 @@ const ModernDashboard = () => {
       Gross: '',
       Net: '',
       Tithe: '',
-      Date: new Date().toISOString().split('T')[0],
+      Date: today,
       TitheStatus: 'unpaid',
       PaycheckStatus: 'received'
     });
@@ -567,11 +672,11 @@ const ModernDashboard = () => {
     setExpenseForm({
       Description: '',
       Amount: '',
-      TableName: '',
-      Date: new Date().toISOString().split('T')[0],
+      TableName: lastExpenseCategory || '',
+      Date: today,
       Notes: '',
       Category: '',
-      Status: 'paid'
+      Status: defaultStatusForDate(today)
     });
     setEditingItem(null);
   };
@@ -645,8 +750,8 @@ const ModernDashboard = () => {
         {/* Header */}
         <View style={styles.header}>
           <View>
-            <Text style={styles.greeting}>{getGreeting()},</Text>
-            <Text style={styles.userName}>{user?.Name || user?.Username || 'User'}</Text>
+            <Text style={[styles.greeting, { color: colors.textMuted }]}>{getGreeting()},</Text>
+            <Text style={[styles.userName, { color: colors.text }]}>{user?.Name || user?.Username || 'User'}</Text>
           </View>
           <View style={styles.headerActions}>
             <TouchableOpacity style={[styles.refreshButton, { backgroundColor: colors.inputBg }]} onPress={loadAllData}>
@@ -662,8 +767,8 @@ const ModernDashboard = () => {
         </View>
 
         {/* Net Position Hero */}
-        <AnimatedCard delay={0} style={styles.heroCard}>
-          <Text style={styles.heroLabel}>NET POSITION</Text>
+        <AnimatedCard delay={0} cardStyle={dynamicStyles.card} style={styles.heroCard}>
+          <Text style={[styles.heroLabel, { color: colors.textMuted }]}>NET POSITION</Text>
           <Text style={[styles.heroValue, { color: netPosition >= 0 ? colors.success : colors.danger }]}>
             {formatCurrency(netPosition)}
           </Text>
@@ -686,24 +791,24 @@ const ModernDashboard = () => {
 
         {/* Quick Stats */}
         <View style={styles.statsRow}>
-          <AnimatedCard delay={100} style={styles.statCard}>
+          <AnimatedCard delay={100} cardStyle={dynamicStyles.card} style={styles.statCard}>
             <Text style={styles.statIcon}>💰</Text>
-            <Text style={styles.statTitle}>Gross Income</Text>
+            <Text style={[styles.statTitle, { color: colors.textDim }]}>Gross Income</Text>
             <Text style={[styles.statValue, { color: colors.success }]}>{formatCurrency(totalGross)}</Text>
           </AnimatedCard>
-          <AnimatedCard delay={150} style={styles.statCard}>
+          <AnimatedCard delay={150} cardStyle={dynamicStyles.card} style={styles.statCard}>
             <Text style={styles.statIcon}>🙏</Text>
-            <Text style={styles.statTitle}>Tithe</Text>
+            <Text style={[styles.statTitle, { color: colors.textDim }]}>Tithe</Text>
             <Text style={[styles.statValue, { color: colors.accent }]}>{formatCurrency(totalTithe)}</Text>
           </AnimatedCard>
         </View>
 
         {/* Savings Rate */}
-        <AnimatedCard delay={200} style={styles.savingsCard}>
+        <AnimatedCard delay={200} cardStyle={dynamicStyles.card} style={styles.savingsCard}>
           <View style={styles.savingsContent}>
             <View style={styles.savingsInfo}>
-              <Text style={styles.savingsTitle}>Savings Rate</Text>
-              <Text style={styles.savingsDesc}>
+              <Text style={[styles.savingsTitle, { color: colors.text } ]}>Savings Rate</Text>
+              <Text style={[styles.savingsDesc, { color: colors.textMuted }]}>
                 {savingsRate >= 20 ? "Excellent! You're on track 🎯" 
                   : savingsRate >= 10 ? "Good progress! Keep going 💪"
                   : savingsRate > 0 ? "Let's work on saving more 📈"
@@ -722,23 +827,23 @@ const ModernDashboard = () => {
 
         {/* Budget Summary */}
         {budgetsWithActuals.length > 0 && (
-          <AnimatedCard delay={230} style={styles.budgetSummaryCard}>
-            <Text style={styles.sectionTitle}>Budget Summary (This Month)</Text>
+          <AnimatedCard delay={230} cardStyle={dynamicStyles.card} style={styles.budgetSummaryCard}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Budget Summary (This Month)</Text>
             <View style={styles.budgetSummaryRow}>
               <View style={styles.budgetSummaryItem}>
-                <Text style={styles.budgetSummaryLabel}>Planned</Text>
+                <Text style={[styles.budgetSummaryLabel, { color: colors.textDim }]}>Planned</Text>
                 <Text style={styles.budgetSummaryValue}>
                   {formatCurrency(totalPlannedBudget)}
                 </Text>
               </View>
               <View style={styles.budgetSummaryItem}>
-                <Text style={styles.budgetSummaryLabel}>Actual</Text>
+                <Text style={[styles.budgetSummaryLabel, { color: colors.textDim }]}>Actual</Text>
                 <Text style={styles.budgetSummaryValue}>
                   {formatCurrency(totalActualBudget)}
                 </Text>
               </View>
               <View style={styles.budgetSummaryItem}>
-                <Text style={styles.budgetSummaryLabel}>Remaining</Text>
+                <Text style={[styles.budgetSummaryLabel, { color: colors.textDim }]}>Remaining</Text>
                 <Text
                   style={[
                     styles.budgetSummaryValue,
@@ -752,10 +857,10 @@ const ModernDashboard = () => {
 
             {atRiskBudgets.length > 0 && (
               <>
-                <Text style={styles.budgetAtRiskTitle}>At-risk categories</Text>
+                <Text style={[styles.budgetAtRiskTitle, { color: colors.text }]}>At-risk categories</Text>
                 {atRiskBudgets.map((b) => (
                   <View key={b.BudgetID} style={styles.budgetAtRiskRow}>
-                    <Text style={styles.budgetAtRiskName}>{b.CategoryName}</Text>
+                    <Text style={[styles.budgetAtRiskName, { color: colors.textMuted }]}>{b.CategoryName}</Text>
                     <Text
                       style={[
                         styles.budgetAtRiskPercent,
@@ -777,8 +882,8 @@ const ModernDashboard = () => {
 
         {/* Monthly Cashflow */}
         {lastMonths.length > 0 && (
-          <AnimatedCard delay={240} style={styles.cashflowCard}>
-            <Text style={styles.sectionTitle}>Monthly Cashflow</Text>
+          <AnimatedCard delay={240} cardStyle={dynamicStyles.card} style={styles.cashflowCard}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Monthly Cashflow</Text>
             {lastMonths.map((m) => (
               <TouchableOpacity
                 key={m.key}
@@ -788,9 +893,9 @@ const ModernDashboard = () => {
                 ]}
                 onPress={() => setSelectedCashflowMonth(m.key)}
               >
-                <Text style={styles.cashflowMonth}>{m.label}</Text>
-                <Text style={styles.cashflowIncome}>{formatCurrency(m.income)}</Text>
-                <Text style={styles.cashflowExpense}>{formatCurrency(m.expenses)}</Text>
+                <Text style={[styles.cashflowMonth, { color: colors.text }]}>{m.label}</Text>
+                <Text style={[styles.cashflowIncome, { color: colors.success }]}>{formatCurrency(m.income)}</Text>
+                <Text style={[styles.cashflowExpense, { color: colors.danger }]}>{formatCurrency(m.expenses)}</Text>
                 <Text
                   style={[
                     styles.cashflowNet,
@@ -804,13 +909,13 @@ const ModernDashboard = () => {
 
             {activeMonth && cashflowCategories.length > 0 && (
               <>
-                <Text style={styles.cashflowDetailTitle}>
+                <Text style={[styles.cashflowDetailTitle, { color: colors.text }]}>
                   Top categories in {activeMonth.label}
                 </Text>
                 {cashflowCategories.map((cat) => (
                   <View key={cat.TableName} style={styles.cashflowDetailRow}>
-                    <Text style={styles.cashflowDetailName}>{cat.TableName}</Text>
-                    <Text style={styles.cashflowDetailAmount}>
+                    <Text style={[styles.cashflowDetailName, { color: colors.text }]}>{cat.TableName}</Text>
+                    <Text style={[styles.cashflowDetailAmount, { color: colors.text }]}>
                       {formatCurrency(cat.totalAmount)}
                     </Text>
                   </View>
@@ -822,8 +927,8 @@ const ModernDashboard = () => {
 
         {/* Categories */}
         {categoryList.length > 0 && (
-          <AnimatedCard delay={250} style={styles.categoriesCard}>
-            <Text style={styles.sectionTitle}>Spending by Category</Text>
+          <AnimatedCard delay={250} cardStyle={dynamicStyles.card} style={styles.categoriesCard}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Spending by Category</Text>
             <View style={styles.categoryGrid}>
               {categoryList.slice(0, 6).map((cat, index) => (
                 <CategoryCard 
@@ -838,26 +943,51 @@ const ModernDashboard = () => {
         )}
 
         {/* Income List */}
-        <AnimatedCard delay={300} style={styles.listCard}>
+        <AnimatedCard delay={300} cardStyle={dynamicStyles.card} style={styles.listCard}>
           <View style={styles.listHeader}>
-            <Text style={styles.sectionTitle}>💵 Income</Text>
-            <TouchableOpacity onPress={() => { resetIncomeForm(); setShowIncomeModal(true); }}>
-              <Text style={styles.addButton}>+ Add</Text>
-            </TouchableOpacity>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>💵 Income</Text>
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              {lastIncomeTemplate && (
+                <TouchableOpacity
+                  onPress={() => {
+                    setIncomeForm({
+                      Description: lastIncomeTemplate.Description || '',
+                      Gross: (lastIncomeTemplate.Gross || '').toString(),
+                      Net: (lastIncomeTemplate.Net || '').toString(),
+                      Tithe: (lastIncomeTemplate.Tithe || '').toString(),
+                      Date: today,
+                      TitheStatus: lastIncomeTemplate.TitheStatus || 'unpaid',
+                      PaycheckStatus: lastIncomeTemplate.PaycheckStatus || 'received',
+                    });
+                    setShowIncomeModal(true);
+                  }}
+                >
+                  <Text style={styles.addButton}>Use last</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                onPress={() => {
+                  resetIncomeForm();
+                  setShowIncomeModal(true);
+                }}
+              >
+                <Text style={styles.addButton}>+ Add</Text>
+              </TouchableOpacity>
+            </View>
           </View>
           {incomeList.length > 0 ? (
             incomeList.slice(0, 5).map((income, index) => (
-              <IncomeRow key={income.IncomeId || index} income={income} onEdit={openEditIncome} />
+              <IncomeRow key={income.IncomeId || index} income={income} onEdit={openEditIncome} colors={colors} />
             ))
           ) : (
-            <Text style={styles.emptyText}>No income recorded yet</Text>
+            <Text style={[styles.emptyText, { color: colors.textDim }]}>No income recorded yet</Text>
           )}
         </AnimatedCard>
 
         {/* Transactions List */}
-        <AnimatedCard delay={350} style={styles.listCard}>
+        <AnimatedCard delay={350} cardStyle={dynamicStyles.card} style={styles.listCard}>
           <View style={styles.listHeader}>
-            <Text style={styles.sectionTitle}>💳 Recent Expenses</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>💳 Recent Expenses</Text>
             <TouchableOpacity onPress={() => { resetExpenseForm(); setShowExpenseModal(true); }}>
               <Text style={styles.addButton}>+ Add</Text>
             </TouchableOpacity>
@@ -869,34 +999,35 @@ const ModernDashboard = () => {
                 transaction={txn} 
                 onEdit={openEditExpense}
                 onDelete={() => handleDeleteExpense(txn.TransactionId)}
+                colors={colors}
               />
             ))
           ) : (
-            <Text style={styles.emptyText}>No expenses recorded yet</Text>
+            <Text style={[styles.emptyText, { color: colors.textDim }]}>No expenses recorded yet</Text>
           )}
         </AnimatedCard>
 
         {/* Quick Actions */}
-        <AnimatedCard delay={400} style={styles.actionsCard}>
-          <Text style={styles.sectionTitle}>Quick Actions</Text>
+        <AnimatedCard delay={400} cardStyle={dynamicStyles.card} style={styles.actionsCard}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Quick Actions</Text>
           <View style={styles.actionsGrid}>
             <TouchableOpacity 
               style={styles.actionButton}
               onPress={() => { resetExpenseForm(); setShowExpenseModal(true); }}
             >
               <Text style={styles.actionIcon}>💳</Text>
-              <Text style={styles.actionLabel}>Add Expense</Text>
+              <Text style={[styles.actionLabel, { color: colors.textMuted }]}>Add Expense</Text>
             </TouchableOpacity>
             <TouchableOpacity 
               style={styles.actionButton}
               onPress={() => { resetIncomeForm(); setShowIncomeModal(true); }}
             >
               <Text style={styles.actionIcon}>💵</Text>
-              <Text style={styles.actionLabel}>Add Income</Text>
+              <Text style={[styles.actionLabel, { color: colors.textMuted }]}>Add Income</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.actionButton} onPress={loadAllData}>
               <Text style={styles.actionIcon}>📊</Text>
-              <Text style={styles.actionLabel}>Refresh</Text>
+              <Text style={[styles.actionLabel, { color: colors.textMuted }]}>Refresh</Text>
             </TouchableOpacity>
           </View>
         </AnimatedCard>
@@ -1072,6 +1203,7 @@ const ModernDashboard = () => {
                   key={txn.TransactionId || index} 
                   transaction={txn} 
                   onEdit={(t) => { setShowCategoryModal(false); openEditExpense(t); }}
+                  colors={colors}
                 />
               ))}
             </ScrollView>

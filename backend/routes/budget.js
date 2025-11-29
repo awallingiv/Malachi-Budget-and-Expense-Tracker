@@ -396,6 +396,137 @@ router.post('/recurring', [
 });
 
 /**
+ * CATEGORY SUMMARY
+ */
+
+/**
+ * @route   GET /api/budget/category-summary/:userId
+ * @desc    Get per-category spending summary for a date range
+ * @access  Private
+ */
+router.get('/category-summary/:userId', [
+  param('userId').isUUID().withMessage('Valid user ID required'),
+  query('startDate').optional().isISO8601().withMessage('Valid start date required'),
+  query('endDate').optional().isISO8601().withMessage('Valid end date required'),
+], handleValidationErrors, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { startDate, endDate } = req.query;
+
+    if (userId.toUpperCase() !== req.user.UserId.toUpperCase()) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to view category summary for this user',
+      });
+    }
+
+    const now = new Date();
+    const defaultStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const defaultEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+    const start = startDate ? new Date(startDate) : defaultStart;
+    const end = endDate ? new Date(endDate) : defaultEnd;
+
+    const queryText = `
+      SELECT
+        ISNULL(TableName, 'Other') AS Category,
+        ISNULL(SUM(Amount), 0) AS TotalAmount,
+        COUNT(*) AS TransactionCount
+      FROM Transactions
+      WHERE UserID = @userId
+        AND CAST(ISNULL(Date, CreationTime) AS DATE) BETWEEN @startDate AND @endDate
+      GROUP BY ISNULL(TableName, 'Other')
+      ORDER BY TotalAmount DESC;
+    `;
+
+    const result = await executeQuery(queryText, {
+      userId: { type: sql.UniqueIdentifier, value: userId },
+      startDate: { type: sql.Date, value: start },
+      endDate: { type: sql.Date, value: end },
+    });
+
+    res.json(result.recordset || []);
+  } catch (error) {
+    console.error('Get category summary error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch category summary',
+    });
+  }
+});
+
+/**
+ * CATEGORY TRENDS
+ */
+
+/**
+ * @route   GET /api/budget/category-trends/:userId
+ * @desc    Get monthly spending trends for a category over the last N months
+ * @access  Private
+ */
+router.get('/category-trends/:userId', [
+  param('userId').isUUID().withMessage('Valid user ID required'),
+  query('category').optional().isLength({ min: 1, max: 50 }).withMessage('Category max length 50'),
+  query('months').optional().isInt({ min: 1, max: 36 }).withMessage('Months must be between 1 and 36'),
+], handleValidationErrors, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { category, months } = req.query;
+
+    if (userId.toUpperCase() !== req.user.UserId.toUpperCase()) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to view trends for this user',
+      });
+    }
+
+    const monthsInt = months ? parseInt(months, 10) : 12;
+
+    const queryText = `
+      DECLARE @today DATE = CAST(GETDATE() AS DATE);
+      DECLARE @startDate DATE = DATEADD(MONTH, -(@months - 1), DATEFROMPARTS(YEAR(@today), MONTH(@today), 1));
+
+      WITH MonthlyData AS (
+        SELECT
+          YEAR(ISNULL(Date, CreationTime)) AS [Year],
+          MONTH(ISNULL(Date, CreationTime)) AS [Month],
+          ISNULL(TableName, 'Other') AS Category,
+          SUM(Amount) AS TotalAmount
+        FROM Transactions
+        WHERE UserID = @userId
+          AND CAST(ISNULL(Date, CreationTime) AS DATE) >= @startDate
+          AND CAST(ISNULL(Date, CreationTime) AS DATE) <= @today
+          AND (@category IS NULL OR ISNULL(TableName, 'Other') = @category)
+        GROUP BY YEAR(ISNULL(Date, CreationTime)),
+                 MONTH(ISNULL(Date, CreationTime)),
+                 ISNULL(TableName, 'Other')
+      )
+      SELECT
+        [Year],
+        [Month],
+        Category,
+        TotalAmount
+      FROM MonthlyData
+      ORDER BY [Year], [Month], Category;
+    `;
+
+    const result = await executeQuery(queryText, {
+      userId: { type: sql.UniqueIdentifier, value: userId },
+      category: { type: sql.VarChar(50), value: category || null },
+      months: { type: sql.Int, value: monthsInt },
+    });
+
+    res.json(result.recordset || []);
+  } catch (error) {
+    console.error('Get category trends error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch category trends',
+    });
+  }
+});
+
+/**
  * @route   PUT /api/budget/recurring/:recurringId
  * @desc    Update a recurring item
  * @access  Private
@@ -815,18 +946,35 @@ router.delete('/budgets/:budgetId', [
 
 /**
  * @route   GET /api/budget/transactions/:userId
- * @desc    Get all transactions for user
+ * @desc    Get all transactions for user with optional filters
  * @access  Private
  */
 router.get('/transactions/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
-    const { limit, category } = req.query;
+    const {
+      limit,
+      category,
+      startDate,
+      endDate,
+      minAmount,
+      maxAmount,
+      q,
+    } = req.query;
 
-    console.log('Transactions request:', { userId, limit, category });
+    console.log('Transactions request:', {
+      userId,
+      limit,
+      category,
+      startDate,
+      endDate,
+      minAmount,
+      maxAmount,
+      q,
+    });
 
     const params = {
-      UserId: { type: sql.UniqueIdentifier, value: userId }
+      UserId: { type: sql.UniqueIdentifier, value: userId },
     };
 
     // Add TableName parameter if category is specified
@@ -836,14 +984,57 @@ router.get('/transactions/:userId', async (req, res) => {
 
     const result = await executeStoredProcedure('sprb_GetTransactionsByUserID', params);
 
-    let transactions = result.recordset;
-    console.log(`Found ${transactions.length} transactions for category: ${category || 'all'}`);
+    let transactions = result.recordset || [];
+    console.log(`Found ${transactions.length} base transactions for category: ${category || 'all'}`);
 
-    // Apply limit if specified and sort by most recent
+    // Apply additional in-memory filters
+    const start = startDate ? new Date(startDate) : null;
+    const end = endDate ? new Date(endDate) : null;
+    const min = minAmount !== undefined ? parseFloat(minAmount) : null;
+    const max = maxAmount !== undefined ? parseFloat(maxAmount) : null;
+    const queryText = (q || '').toLowerCase();
+
+    if (start || end || min !== null || max !== null || queryText) {
+      transactions = transactions.filter((t) => {
+        // Date filter
+        if (start || end) {
+          const d = new Date(t.Date || t.CreationTime);
+          if (Number.isNaN(d.getTime())) return false;
+          if (start && d < start) return false;
+          if (end && d > end) return false;
+        }
+
+        // Amount range filter
+        const amount = parseFloat(t.Amount) || 0;
+        if (min !== null && amount < min) return false;
+        if (max !== null && amount > max) return false;
+
+        // Text search filter
+        if (queryText) {
+          const haystack = [
+            t.Description,
+            t.Notes,
+            t.TableName,
+            t.Category,
+          ]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase();
+
+          if (!haystack.includes(queryText)) return false;
+        }
+
+        return true;
+      });
+    }
+
+    // Sort by most recent and apply limit if specified
+    transactions = transactions.sort(
+      (a, b) => new Date(b.Date || b.CreationTime) - new Date(a.Date || a.CreationTime)
+    );
+
     if (limit) {
-      transactions = transactions
-        .sort((a, b) => new Date(b.Date || b.CreationTime) - new Date(a.Date || a.CreationTime))
-        .slice(0, parseInt(limit));
+      transactions = transactions.slice(0, parseInt(limit, 10));
     }
 
     res.json(transactions);
@@ -851,7 +1042,7 @@ router.get('/transactions/:userId', async (req, res) => {
     console.error('Get transactions error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch transactions'
+      error: 'Failed to fetch transactions',
     });
   }
 });
@@ -1117,11 +1308,19 @@ router.put('/transactions/:transactionId', [
  */
 router.delete('/transactions/:transactionId', [
   param('transactionId').isUUID().withMessage('Valid transaction ID required'),
-  body('userId').isUUID().withMessage('Valid user ID required')
+  query('userId').optional().isUUID().withMessage('Valid user ID required')
 ], handleValidationErrors, async (req, res) => {
   try {
     const { transactionId } = req.params;
-    const { userId } = req.body;
+    // Accept userId from query params (preferred) or body (backward compatibility)
+    const userId = req.query.userId || req.body.userId;
+    
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'User ID is required'
+      });
+    }
 
     // Validate ownership (case-insensitive UUID comparison)
     if (userId.toUpperCase() !== req.user.UserId.toUpperCase()) {
@@ -1136,17 +1335,25 @@ router.delete('/transactions/:transactionId', [
       UserID: { type: sql.UniqueIdentifier, value: req.user.UserId }
     });
 
-    const response = result.recordset[0];
+    const response = result.recordset?.[0];
+
+    if (!response) {
+      console.error('Delete transaction: No response from stored procedure');
+      return res.status(500).json({
+        success: false,
+        error: 'No response from delete operation'
+      });
+    }
 
     if (response.Success) {
       res.json({
         success: true,
-        message: response.Message
+        message: response.Message || 'Transaction deleted successfully'
       });
     } else {
       res.status(404).json({
         success: false,
-        error: response.Message
+        error: response.Message || 'Transaction not found or could not be deleted'
       });
     }
   } catch (error) {
@@ -1638,11 +1845,19 @@ router.put('/income/:incomeId', [
  */
 router.delete('/income/:incomeId', [
   param('incomeId').isUUID().withMessage('Valid income ID required'),
-  body('userId').isUUID().withMessage('Valid user ID required')
+  query('userId').optional().isUUID().withMessage('Valid user ID required')
 ], handleValidationErrors, async (req, res) => {
   try {
     const { incomeId } = req.params;
-    const { userId } = req.body;
+    // Accept userId from query params (preferred) or body (backward compatibility)
+    const userId = req.query.userId || req.body.userId;
+    
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'User ID is required'
+      });
+    }
 
     // Validate ownership (case-insensitive UUID comparison)
     if (userId.toUpperCase() !== req.user.UserId.toUpperCase()) {
@@ -1657,11 +1872,20 @@ router.delete('/income/:incomeId', [
       UserID: { type: sql.UniqueIdentifier, value: userId }
     });
 
-    const response = result.recordset[0];
+    const response = result.recordset?.[0];
+    
+    if (!response) {
+      console.error('Delete income: No response from stored procedure');
+      return res.status(500).json({
+        success: false,
+        error: 'No response from delete operation'
+      });
+    }
+    
     if (response.Success) {
       res.json({
         success: true,
-        message: 'Income record deleted successfully'
+        message: response.Message || 'Income record deleted successfully'
       });
     } else {
       res.status(400).json({
@@ -1674,6 +1898,216 @@ router.delete('/income/:incomeId', [
     res.status(500).json({
       success: false,
       error: 'Failed to delete income record'
+    });
+  }
+});
+
+/**
+ * SAVED VIEWS
+ */
+
+/**
+ * @route   GET /api/budget/views/:userId
+ * @desc    Get all saved views for a user
+ * @access  Private
+ */
+router.get('/views/:userId', [
+  param('userId').isUUID().withMessage('Valid user ID required'),
+], handleValidationErrors, async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (userId.toUpperCase() !== req.user.UserId.toUpperCase()) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to view saved views for this user',
+      });
+    }
+
+    const result = await executeQuery(
+      'SELECT SavedViewID, UserID, Name, FilterConfig, CreationTime, LastEdit FROM SavedViews WHERE UserID = @userId ORDER BY CreationTime DESC',
+      {
+        userId: { type: sql.UniqueIdentifier, value: userId },
+      }
+    );
+
+    res.json(result.recordset || []);
+  } catch (error) {
+    console.error('Get saved views error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch saved views',
+    });
+  }
+});
+
+/**
+ * @route   POST /api/budget/views
+ * @desc    Create a new saved view
+ * @access  Private
+ */
+router.post('/views', [
+  body('UserID').isUUID().withMessage('Valid user ID required'),
+  body('Name').isLength({ min: 1, max: 100 }).withMessage('Name required (max 100 chars)'),
+  body('FilterConfig').isString().withMessage('FilterConfig JSON string is required'),
+], handleValidationErrors, async (req, res) => {
+  try {
+    const { UserID, Name, FilterConfig } = req.body;
+
+    if (UserID.toUpperCase() !== req.user.UserId.toUpperCase()) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to create saved views for this user',
+      });
+    }
+
+    const result = await executeQuery(
+      `
+        INSERT INTO SavedViews (UserID, Name, FilterConfig)
+        OUTPUT inserted.SavedViewID, inserted.UserID, inserted.Name, inserted.FilterConfig, inserted.CreationTime, inserted.LastEdit
+        VALUES (@userId, @name, @filterConfig);
+      `,
+      {
+        userId: { type: sql.UniqueIdentifier, value: UserID },
+        name: { type: sql.VarChar(100), value: Name },
+        filterConfig: { type: sql.NVarChar(sql.MAX), value: FilterConfig },
+      }
+    );
+
+    const view = result.recordset?.[0];
+
+    res.status(201).json({
+      success: true,
+      view,
+    });
+  } catch (error) {
+    console.error('Create saved view error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create saved view',
+    });
+  }
+});
+
+/**
+ * @route   PUT /api/budget/views/:viewId
+ * @desc    Update a saved view (name or filter config)
+ * @access  Private
+ */
+router.put('/views/:viewId', [
+  param('viewId').isUUID().withMessage('Valid view ID required'),
+  body('UserID').isUUID().withMessage('Valid user ID required'),
+  body('Name').optional().isLength({ min: 1, max: 100 }).withMessage('Name max 100 chars'),
+  body('FilterConfig').optional().isString().withMessage('FilterConfig must be JSON string'),
+], handleValidationErrors, async (req, res) => {
+  try {
+    const { viewId } = req.params;
+    const { UserID, Name, FilterConfig } = req.body;
+
+    if (UserID.toUpperCase() !== req.user.UserId.toUpperCase()) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to update this saved view',
+      });
+    }
+
+    const result = await executeQuery(
+      `
+        UPDATE SavedViews
+        SET
+          Name = COALESCE(@name, Name),
+          FilterConfig = COALESCE(@filterConfig, FilterConfig),
+          LastEdit = GETDATE()
+        WHERE SavedViewID = @viewId
+          AND UserID = @userId;
+
+        SELECT @@ROWCOUNT AS RowsAffected;
+      `,
+      {
+        viewId: { type: sql.UniqueIdentifier, value: viewId },
+        userId: { type: sql.UniqueIdentifier, value: UserID },
+        name: { type: sql.VarChar(100), value: Name || null },
+        filterConfig: {
+          type: sql.NVarChar(sql.MAX),
+          value: FilterConfig || null,
+        },
+      }
+    );
+
+    const row = result.recordset?.[0];
+
+    if (!row || row.RowsAffected === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Saved view not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Saved view updated successfully',
+    });
+  } catch (error) {
+    console.error('Update saved view error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update saved view',
+    });
+  }
+});
+
+/**
+ * @route   DELETE /api/budget/views/:viewId
+ * @desc    Delete a saved view
+ * @access  Private
+ */
+router.delete('/views/:viewId', [
+  param('viewId').isUUID().withMessage('Valid view ID required'),
+  body('userId').isUUID().withMessage('Valid user ID required'),
+], handleValidationErrors, async (req, res) => {
+  try {
+    const { viewId } = req.params;
+    const { userId } = req.body;
+
+    if (userId.toUpperCase() !== req.user.UserId.toUpperCase()) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to delete this saved view',
+      });
+    }
+
+    const result = await executeQuery(
+      `
+        DELETE FROM SavedViews
+        WHERE SavedViewID = @viewId
+          AND UserID = @userId;
+
+        SELECT @@ROWCOUNT AS RowsAffected;
+      `,
+      {
+        viewId: { type: sql.UniqueIdentifier, value: viewId },
+        userId: { type: sql.UniqueIdentifier, value: userId },
+      }
+    );
+
+    const row = result.recordset?.[0];
+
+    if (!row || row.RowsAffected === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Saved view not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Saved view deleted successfully',
+    });
+  } catch (error) {
+    console.error('Delete saved view error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to delete saved view',
     });
   }
 });

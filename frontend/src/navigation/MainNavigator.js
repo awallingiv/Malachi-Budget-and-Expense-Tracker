@@ -9,6 +9,7 @@ import TransactionsScreen from '../screens/TransactionsScreen';
 import IncomeScreen from '../screens/IncomeScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import RecurringScreen from '../screens/RecurringScreen';
+import InsightsScreen from '../screens/InsightsScreen';
 
 const Tab = createBottomTabNavigator();
 
@@ -25,6 +26,8 @@ export default function MainNavigator() {
             iconName = focused ? 'view-dashboard' : 'view-dashboard-outline';
           } else if (route.name === 'Budgets') {
             iconName = focused ? 'cash-check' : 'cash';
+          } else if (route.name === 'Insights') {
+            iconName = focused ? 'chart-donut' : 'chart-donut';
           } else if (route.name === 'Recurring') {
             iconName = focused ? 'calendar-clock' : 'calendar';
           } else if (route.name === 'Windows') {
@@ -69,6 +72,13 @@ export default function MainNavigator() {
         component={BudgetsScreen}
         options={{
           tabBarLabel: 'Budgets',
+        }}
+      />
+      <Tab.Screen 
+        name="Insights" 
+        component={InsightsScreen}
+        options={{
+          tabBarLabel: 'Insights',
         }}
       />
       <Tab.Screen 

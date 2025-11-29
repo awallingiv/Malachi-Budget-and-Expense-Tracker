@@ -152,9 +152,27 @@ export const authService = {
     return response.data;
   },
 
+  // Verify email via link (email + code in query string)
+  verifyEmailLink: async (email, code) => {
+    const response = await api.get('/auth/verify-email-link', {
+      params: { email, code },
+    });
+    return response.data;
+  },
+
   forgotPassword: async (usernameOrEmail) => {
     const response = await api.post('/auth/forgot-password', {
       usernameOrEmail
+    });
+    return response.data;
+  },
+
+  // Reset password using email + code from link
+  resetPasswordWithCode: async (email, code, newPassword) => {
+    const response = await api.post('/auth/reset-password-link', {
+      email,
+      code,
+      newPassword,
     });
     return response.data;
   }
@@ -180,8 +198,10 @@ export const budgetService = {
     return response.data;
   },
 
-  getTransactions: async (userId) => {
-    const response = await api.get(`/budget/transactions/${userId}`);
+  getTransactions: async (userId, params = {}) => {
+    const response = await api.get(`/budget/transactions/${userId}`, {
+      params,
+    });
     return response.data;
   },
 
@@ -196,10 +216,18 @@ export const budgetService = {
   },
 
   deleteTransaction: async (transactionId, userId) => {
-    const response = await api.delete(`/budget/transactions/${transactionId}`, {
-      data: { userId }
-    });
-    return response.data;
+    try {
+      const response = await api.delete(`/budget/transactions/${transactionId}`, {
+        params: { userId }
+      });
+      return response.data;
+    } catch (error) {
+      // If axios throws an error but we have response data, return it
+      if (error.response && error.response.data) {
+        return error.response.data;
+      }
+      throw error;
+    }
   },
 
   getIncome: async (userId, startDate, endDate) => {
@@ -220,10 +248,18 @@ export const budgetService = {
   },
 
   deleteIncome: async (incomeId, userId) => {
-    const response = await api.delete(`/budget/income/${incomeId}`, {
-      data: { userId }
-    });
-    return response.data;
+    try {
+      const response = await api.delete(`/budget/income/${incomeId}`, {
+        params: { userId }
+      });
+      return response.data;
+    } catch (error) {
+      // If axios throws an error but we have response data, return it
+      if (error.response && error.response.data) {
+        return error.response.data;
+      }
+      throw error;
+    }
   },
 
   // Category Windows Management
@@ -319,6 +355,45 @@ export const budgetService = {
   deleteRecurringItem: async (recurringId, userId) => {
     const response = await api.delete(`/budget/recurring/${recurringId}`, {
       data: { userId },
+    });
+    return response.data;
+  },
+
+  // Saved views for transactions
+  getSavedViews: async (userId) => {
+    const response = await api.get(`/budget/views/${userId}`);
+    return response.data;
+  },
+
+  createSavedView: async (viewData) => {
+    const response = await api.post('/budget/views', viewData);
+    return response.data;
+  },
+
+  updateSavedView: async (viewId, viewData) => {
+    const response = await api.put(`/budget/views/${viewId}`, viewData);
+    return response.data;
+  },
+
+  deleteSavedView: async (viewId, userId) => {
+    const response = await api.delete(`/budget/views/${viewId}`, {
+      data: { userId },
+    });
+    return response.data;
+  },
+
+  // Category summary
+  getCategorySummary: async (userId, params = {}) => {
+    const response = await api.get(`/budget/category-summary/${userId}`, {
+      params,
+    });
+    return response.data;
+  },
+
+  // Category trends
+  getCategoryTrends: async (userId, params = {}) => {
+    const response = await api.get(`/budget/category-trends/${userId}`, {
+      params,
     });
     return response.data;
   }

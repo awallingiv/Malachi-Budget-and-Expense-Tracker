@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, StyleSheet, ScrollView, RefreshControl, FlatList } from 'react-native';
+import { View, StyleSheet, ScrollView, RefreshControl, FlatList, Alert } from 'react-native';
 import { 
   Text, 
   Card, 
@@ -11,17 +11,32 @@ import {
   IconButton,
   SegmentedButtons,
   Menu,
-  Searchbar
+  Searchbar,
+  Checkbox,
+  Button,
 } from 'react-native-paper';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { budgetService } from '../services/apiService';
 import ModernButton from '../components/ModernButton';
 import ModernInput from '../components/ModernInput';
+import { useSmartDefaults } from '../hooks/useSmartDefaults';
+import { useMerchantDefaults } from '../hooks/useMerchantDefaults';
 
 export default function TransactionsScreen() {
   const { user } = useAuth();
   const { theme } = useTheme();
+  const {
+    today,
+    lastExpenseCategory,
+    updateLastExpenseCategory,
+    defaultStatusForDate,
+  } = useSmartDefaults(user?.UserId);
+  const {
+    recordMerchant,
+    getDefaultCategory,
+    getSuggestions,
+  } = useMerchantDefaults(user?.UserId);
   const [transactions, setTransactions] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -35,7 +50,13 @@ export default function TransactionsScreen() {
   const [sortBy, setSortBy] = useState('date');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [lastCategory, setLastCategory] = useState('');
+  const [minAmount, setMinAmount] = useState('');
+  const [maxAmount, setMaxAmount] = useState('');
+  const [savedViews, setSavedViews] = useState([]);
+  const [showSaveViewModal, setShowSaveViewModal] = useState(false);
+  const [viewName, setViewName] = useState('');
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState([]);
 
   // New transaction form state
   const [newTransaction, setNewTransaction] = useState({
@@ -51,6 +72,7 @@ export default function TransactionsScreen() {
 
   useEffect(() => {
     loadData();
+    loadSavedViews();
   }, []);
 
   const loadData = async () => {
@@ -72,10 +94,84 @@ export default function TransactionsScreen() {
     }
   };
 
+  const loadSavedViews = async () => {
+    if (!user?.UserId) return;
+    try {
+      const views = await budgetService.getSavedViews(user.UserId);
+      setSavedViews(views || []);
+    } catch (err) {
+      console.error('Failed to load saved views:', err);
+    }
+  };
+
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     loadData();
+    loadSavedViews();
   }, []);
+
+  const buildCurrentFilterConfig = () => ({
+    filterCategory,
+    searchQuery,
+    sortBy,
+    startDate,
+    endDate,
+    minAmount,
+    maxAmount,
+  });
+
+  const applyFilterConfig = (config) => {
+    setFilterCategory(config.filterCategory ?? 'all');
+    setSearchQuery(config.searchQuery ?? '');
+    setSortBy(config.sortBy ?? 'date');
+    setStartDate(config.startDate ?? '');
+    setEndDate(config.endDate ?? '');
+    setMinAmount(config.minAmount ?? '');
+    setMaxAmount(config.maxAmount ?? '');
+  };
+
+  const handleSaveCurrentView = async () => {
+    if (!viewName.trim()) return;
+    try {
+      const filterConfig = JSON.stringify(buildCurrentFilterConfig());
+      const payload = {
+        UserID: user.UserId,
+        Name: viewName.trim(),
+        FilterConfig: filterConfig,
+      };
+      const result = await budgetService.createSavedView(payload);
+      if (result?.success && result.view) {
+        setSavedViews(prev => [result.view, ...prev]);
+        setShowSaveViewModal(false);
+        setViewName('');
+      }
+    } catch (err) {
+      console.error('Failed to save view:', err);
+      setError('Failed to save view');
+    }
+  };
+
+  const handleApplyView = (view) => {
+    if (!view?.FilterConfig) return;
+    try {
+      const config = JSON.parse(view.FilterConfig);
+      applyFilterConfig(config || {});
+    } catch (err) {
+      console.error('Invalid FilterConfig JSON for view', view.SavedViewID, err);
+    }
+  };
+
+  const handleDeleteView = async (viewId) => {
+    try {
+      const result = await budgetService.deleteSavedView(viewId, user.UserId);
+      if (result?.success) {
+        setSavedViews(prev => prev.filter(v => v.SavedViewID !== viewId));
+      }
+    } catch (err) {
+      console.error('Failed to delete view:', err);
+      setError('Failed to delete view');
+    }
+  };
 
   const handleAddTransaction = async () => {
     try {
@@ -95,7 +191,13 @@ export default function TransactionsScreen() {
       const result = await budgetService.createTransaction(transactionData);
       
       if (result.success) {
-        setLastCategory(newTransaction.TableName || lastCategory);
+        if (newTransaction.TableName) {
+          updateLastExpenseCategory(newTransaction.TableName);
+        }
+        if (newTransaction.Description && newTransaction.TableName) {
+          // Treat description as merchant for mapping
+          await recordMerchant(newTransaction.Description, newTransaction.TableName);
+        }
         setShowAddModal(false);
         resetNewTransaction();
         loadData();
@@ -125,28 +227,106 @@ export default function TransactionsScreen() {
   };
 
   const handleDeleteTransaction = async (transactionId) => {
-    try {
-      const result = await budgetService.deleteTransaction(transactionId, user.UserId);
-      
-      if (result.success) {
-        loadData();
-      }
-    } catch (error) {
-      console.error('Failed to delete transaction:', error);
-      setError('Failed to delete transaction');
-    }
+    Alert.alert(
+      'Delete Transaction',
+      'Are you sure you want to delete this transaction?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Delete', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              console.log('Deleting transaction:', transactionId, 'for user:', user.UserId);
+              const result = await budgetService.deleteTransaction(transactionId, user.UserId);
+              console.log('Delete result:', result);
+              
+              if (result && result.success) {
+                loadData();
+              } else {
+                const errorMsg = result?.error || result?.message || 'Failed to delete transaction';
+                console.error('Delete failed:', errorMsg);
+                Alert.alert('Error', errorMsg);
+              }
+            } catch (error) {
+              console.error('Failed to delete transaction:', error);
+              const errorMsg = error.response?.data?.error || error.response?.data?.message || error.message || 'Failed to delete transaction';
+              Alert.alert('Error', errorMsg);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const toggleSelectTransaction = (transactionId) => {
+    setSelectedIds((prev) =>
+      prev.includes(transactionId)
+        ? prev.filter((id) => id !== transactionId)
+        : [...prev, transactionId]
+    );
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.length === 0) return;
+
+    Alert.alert(
+      'Delete Transactions',
+      `Are you sure you want to delete ${selectedIds.length} transaction(s)? This action cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Delete', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Delete all selected transactions in parallel
+              const deletePromises = selectedIds.map(id => 
+                budgetService.deleteTransaction(id, user.UserId)
+              );
+              
+              const results = await Promise.all(deletePromises);
+              
+              // Check if all deletions were successful
+              const allSuccessful = results.every(result => result.success);
+              
+              if (allSuccessful) {
+                // Clear selection and refresh data
+                setSelectedIds([]);
+                setSelectMode(false);
+                loadData();
+              } else {
+                // Some deletions failed
+                const failedCount = results.filter(r => !r.success).length;
+                Alert.alert(
+                  'Partial Success',
+                  `${selectedIds.length - failedCount} transaction(s) deleted, but ${failedCount} failed to delete.`
+                );
+                // Still refresh to show updated state
+                setSelectedIds([]);
+                setSelectMode(false);
+                loadData();
+              }
+            } catch (error) {
+              console.error('Failed to delete transactions:', error);
+              Alert.alert('Error', error.message || 'Failed to delete transactions');
+            }
+          }
+        }
+      ]
+    );
   };
 
   const resetNewTransaction = () => {
     setNewTransaction({
-      TableName: lastCategory || '',
+      TableName: lastExpenseCategory || '',
       Description: '',
       Amount: '',
-      Date: new Date().toISOString().split('T')[0],
+      Date: today,
       Due: '',
       Notes: '',
       Category: '',
-      Status: 'pending'
+      Status: defaultStatusForDate(today)
     });
   };
 
@@ -170,7 +350,10 @@ export default function TransactionsScreen() {
       const date = t.Date ? new Date(t.Date) : null;
       const withinStart = !startDate || (date && date >= new Date(startDate));
       const withinEnd = !endDate || (date && date <= new Date(endDate));
-      return matchesCategory && matchesSearch && withinStart && withinEnd;
+      const amount = parseFloat(t.Amount) || 0;
+      const withinMin = !minAmount || amount >= parseFloat(minAmount);
+      const withinMax = !maxAmount || amount <= parseFloat(maxAmount);
+      return matchesCategory && matchesSearch && withinStart && withinEnd && withinMin && withinMax;
     })
     .sort((a, b) => {
       switch (sortBy) {
@@ -188,6 +371,12 @@ export default function TransactionsScreen() {
     <Card style={styles.transactionCard}>
       <Card.Content>
         <View style={styles.transactionHeader}>
+          {selectMode && (
+            <Checkbox
+              status={selectedIds.includes(item.TransactionId) ? 'checked' : 'unchecked'}
+              onPress={() => toggleSelectTransaction(item.TransactionId)}
+            />
+          )}
           <View style={styles.transactionInfo}>
             <Text variant="titleMedium" style={styles.transactionDescription}>
               {item.Description || 'No description'}
@@ -201,27 +390,29 @@ export default function TransactionsScreen() {
               </Text>
             </View>
           </View>
-          <View style={styles.transactionActions}>
-            <Text variant="titleLarge" style={styles.transactionAmount}>
-              {formatCurrency(item.Amount)}
-            </Text>
-            <View style={styles.actionButtons}>
-              <IconButton
-                icon="pencil"
-                size={20}
-                onPress={() => {
-                  setSelectedTransaction(item);
-                  setShowEditModal(true);
-                }}
-              />
-              <IconButton
-                icon="delete"
-                size={20}
-                iconColor="#f44336"
-                onPress={() => handleDeleteTransaction(item.TransactionId)}
-              />
+          {!selectMode && (
+            <View style={styles.transactionActions}>
+              <Text variant="titleLarge" style={styles.transactionAmount}>
+                {formatCurrency(item.Amount)}
+              </Text>
+              <View style={styles.actionButtons}>
+                <IconButton
+                  icon="pencil"
+                  size={20}
+                  onPress={() => {
+                    setSelectedTransaction(item);
+                    setShowEditModal(true);
+                  }}
+                />
+                <IconButton
+                  icon="delete"
+                  size={20}
+                  iconColor="#f44336"
+                  onPress={() => handleDeleteTransaction(item.TransactionId)}
+                />
+              </View>
             </View>
-          </View>
+          )}
         </View>
         
         {item.Notes && (
@@ -258,12 +449,25 @@ export default function TransactionsScreen() {
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       {/* Header Controls */}
       <View style={styles.headerControls}>
-        <Searchbar
-          placeholder="Search transactions..."
-          onChangeText={setSearchQuery}
-          value={searchQuery}
-          style={styles.searchbar}
-        />
+        <View style={styles.topBar}>
+          <Searchbar
+            placeholder="Search transactions..."
+            onChangeText={setSearchQuery}
+            value={searchQuery}
+            style={styles.searchbar}
+          />
+          <Button
+            mode={selectMode ? 'contained-tonal' : 'outlined'}
+            onPress={() => {
+              setSelectMode(!selectMode);
+              if (selectMode) {
+                setSelectedIds([]);
+              }
+            }}
+          >
+            {selectMode ? 'Cancel select' : 'Select'}
+          </Button>
+        </View>
         
         <View style={styles.filterControls}>
           <SegmentedButtons
@@ -292,6 +496,24 @@ export default function TransactionsScreen() {
               placeholder="YYYY-MM-DD"
             />
           </View>
+          <View style={styles.amountFilters}>
+            <TextInput
+              label="Min amount"
+              value={minAmount}
+              onChangeText={setMinAmount}
+              style={styles.amountInput}
+              keyboardType="decimal-pad"
+              placeholder="0.00"
+            />
+            <TextInput
+              label="Max amount"
+              value={maxAmount}
+              onChangeText={setMaxAmount}
+              style={styles.amountInput}
+              keyboardType="decimal-pad"
+              placeholder="0.00"
+            />
+          </View>
         </View>
         
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryFilter}>
@@ -313,6 +535,39 @@ export default function TransactionsScreen() {
             </Chip>
           ))}
         </ScrollView>
+
+        {/* Saved Views */}
+        {savedViews.length > 0 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.savedViewsBar}
+          >
+            {savedViews.map((view) => (
+              <Chip
+                key={view.SavedViewID}
+                mode="outlined"
+                onPress={() => handleApplyView(view)}
+                onLongPress={() => handleDeleteView(view.SavedViewID)}
+                style={styles.savedViewChip}
+              >
+                {view.Name}
+              </Chip>
+            ))}
+          </ScrollView>
+        )}
+
+        <View style={styles.savedViewActions}>
+          <Button
+            mode="text"
+            onPress={() => {
+              setViewName('');
+              setShowSaveViewModal(true);
+            }}
+          >
+            Save current filters as view
+          </Button>
+        </View>
       </View>
 
       {error && (
@@ -341,12 +596,28 @@ export default function TransactionsScreen() {
         )}
       />
 
+      {/* Bulk actions bar */}
+      {selectMode && selectedIds.length > 0 && (
+        <View style={styles.bulkActionsBar}>
+          <Text style={styles.bulkActionsText}>{selectedIds.length} selected</Text>
+          <Button
+            mode="outlined"
+            onPress={handleBulkDelete}
+            textColor="#f44336"
+          >
+            Delete selected
+          </Button>
+        </View>
+      )}
+
       {/* Add Transaction FAB */}
-      <FAB
-        icon="plus"
-        style={styles.fab}
-        onPress={() => setShowAddModal(true)}
-      />
+      {!selectMode && (
+        <FAB
+          icon="plus"
+          style={styles.fab}
+          onPress={() => setShowAddModal(true)}
+        />
+      )}
 
       {/* Add Transaction Modal */}
       <Portal>
@@ -371,12 +642,34 @@ export default function TransactionsScreen() {
               />
 
               <TextInput
-                label="Description"
+                label="Merchant / Description"
                 value={newTransaction.Description}
                 onChangeText={(text) => setNewTransaction(prev => ({ ...prev, Description: text }))}
                 style={styles.input}
-                placeholder="What did you spend on?"
+                placeholder="e.g., Amazon, Starbucks"
               />
+
+              {/* Merchant suggestions */}
+              {getSuggestions(newTransaction.Description).length > 0 && (
+                <View style={styles.merchantSuggestions}>
+                  {getSuggestions(newTransaction.Description).map((merchant) => (
+                    <Chip
+                      key={merchant}
+                      style={styles.merchantChip}
+                      onPress={() => {
+                        const defaultCat = getDefaultCategory(merchant);
+                        setNewTransaction(prev => ({
+                          ...prev,
+                          Description: merchant,
+                          TableName: defaultCat || prev.TableName,
+                        }));
+                      }}
+                    >
+                      {merchant}
+                    </Chip>
+                  ))}
+                </View>
+              )}
 
               <TextInput
                 label="Amount"
@@ -478,6 +771,48 @@ export default function TransactionsScreen() {
           </Card>
         </Modal>
       </Portal>
+
+      {/* Save View Modal */}
+      <Portal>
+        <Modal
+          visible={showSaveViewModal}
+          onDismiss={() => setShowSaveViewModal(false)}
+          contentContainerStyle={styles.modalContent}
+        >
+          <Card>
+            <Card.Content>
+              <View style={styles.modalHeader}>
+                <Text variant="titleLarge">Save Filter View</Text>
+                <IconButton icon="close" onPress={() => setShowSaveViewModal(false)} />
+              </View>
+
+              <TextInput
+                label="View name"
+                value={viewName}
+                onChangeText={setViewName}
+                style={styles.input}
+                placeholder="e.g., Last 30 days – Food"
+              />
+
+              <View style={styles.modalButtons}>
+                <ModernButton
+                  title="Cancel"
+                  variant="outline"
+                  onPress={() => setShowSaveViewModal(false)}
+                  style={{ flex: 1, marginRight: 8 }}
+                />
+                <ModernButton
+                  title="Save"
+                  variant="primary"
+                  onPress={handleSaveCurrentView}
+                  disabled={!viewName.trim()}
+                  style={{ flex: 1, marginLeft: 8 }}
+                />
+              </View>
+            </Card.Content>
+          </Card>
+        </Modal>
+      </Portal>
     </View>
   );
 }
@@ -499,8 +834,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
   },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   searchbar: {
-    marginBottom: 12,
+    flex: 1,
   },
   filterControls: {
     marginBottom: 12,
@@ -508,11 +848,63 @@ const styles = StyleSheet.create({
   sortButtons: {
     marginBottom: 8,
   },
+  dateFilters: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 8,
+  },
+  dateInput: {
+    flex: 1,
+  },
+  amountFilters: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 8,
+  },
+  amountInput: {
+    flex: 1,
+  },
   categoryFilter: {
     maxHeight: 50,
   },
   filterChip: {
     marginRight: 8,
+  },
+  merchantSuggestions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 8,
+  },
+  merchantChip: {
+    marginRight: 6,
+    marginBottom: 6,
+  },
+  savedViewsBar: {
+    marginTop: 10,
+    maxHeight: 40,
+  },
+  savedViewChip: {
+    marginRight: 8,
+  },
+  savedViewActions: {
+    marginTop: 8,
+  },
+  bulkActionsBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    padding: 12,
+    backgroundColor: '#ffffff',
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  bulkActionsText: {
+    fontSize: 14,
+    color: '#333',
   },
   errorCard: {
     margin: 16,

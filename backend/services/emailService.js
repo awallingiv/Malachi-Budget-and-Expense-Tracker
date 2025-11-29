@@ -1,8 +1,23 @@
 const nodemailer = require('nodemailer');
 
 /**
+ * Resolve the public app base URL for links in emails.
+ * Prefer explicit env var, fall back to production domain.
+ */
+const getAppBaseUrl = () => {
+  const base =
+    process.env.APP_URL ||
+    process.env.APP_BASE_URL ||
+    process.env.FRONTEND_BASE_URL ||
+    // Fallback to known production host
+    'https://budget.austinwalling.dev';
+
+  return base.replace(/\/$/, '');
+};
+
+/**
  * Email Service for ReactBudget
- * Handles sending validation codes and other notifications
+ * Handles sending validation and password reset emails.
  */
 class EmailService {
   constructor() {
@@ -36,7 +51,7 @@ class EmailService {
   }
 
   /**
-   * Send validation code email to user
+   * Send validation email with a clickable link and fallback code.
    * @param {string} email - User's email address
    * @param {string} validationCode - UUID validation code
    * @param {string} username - User's username
@@ -48,35 +63,44 @@ class EmailService {
         throw new Error('Email transporter not initialized');
       }
 
-      const baseUrl =
-        process.env.APP_BASE_URL || 'http://localhost:3002';
-      const normalizedBase = baseUrl.replace(/\/$/, '');
-      const validationLink = `${normalizedBase}/api/auth/validate-link?code=${encodeURIComponent(
-        validationCode
-      )}`;
+      const appBaseUrl = getAppBaseUrl();
+      const verificationUrl = `${appBaseUrl}/verify-email?email=${encodeURIComponent(
+        email
+      )}&code=${validationCode}`;
 
       const mailOptions = {
         from: process.env.SMTP_FROM,
         to: email,
-        subject: 'ReactBudget - Confirm Your Email Address',
+        subject: 'ReactBudget - Account Validation Required',
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h2 style="color: #2196F3;">Welcome to ReactBudget!</h2>
             
             <p>Hi ${username},</p>
             
-            <p>Thank you for registering with ReactBudget. To complete your account setup, please confirm your email address by clicking the button below:</p>
+            <p>Thank you for registering with ReactBudget. To complete your account setup, please verify your email address using the button below:</p>
             
-            <div style="text-align: center; margin: 24px 0;">
-              <a href="${validationLink}" style="background-color: #2196F3; color: #ffffff; padding: 12px 24px; border-radius: 4px; text-decoration: none; display: inline-block; font-weight: bold;">
-                Confirm Email
+            <p style="text-align: center; margin: 24px 0;">
+              <a 
+                href="${verificationUrl}"
+                style="
+                  display: inline-block;
+                  padding: 12px 24px;
+                  background-color: #2196F3;
+                  color: #ffffff;
+                  text-decoration: none;
+                  border-radius: 4px;
+                  font-weight: 600;
+                "
+              >
+                Verify Email
               </a>
-            </div>
+            </p>
             
-            <p>If the button above does not work, copy and paste this link into your browser:</p>
-            <p style="word-break: break-all; color: #555;"><a href="${validationLink}">${validationLink}</a></p>
-            
-            <p><strong>Important:</strong> This link will expire in 15 minutes for security purposes.</p>
+            <p>If the button above doesn't work, you can copy and paste this link into your browser:</p>
+            <p style="word-break: break-all;">
+              <a href="${verificationUrl}">${verificationUrl}</a>
+            </p>
             
             <p>If you didn't create this account, please ignore this email.</p>
             
@@ -93,12 +117,17 @@ Welcome to ReactBudget!
 
 Hi ${username},
 
-Thank you for registering with ReactBudget. To complete your account setup, please confirm your email address.
+Thank you for registering with ReactBudget.
 
-You can confirm your email by clicking this link:
-${validationLink}
+To complete your account setup, click the link below to verify your email address:
 
-Important: This link will expire in 15 minutes for security purposes.
+${verificationUrl}
+
+If the link does not open, you can also copy and paste this code into the ReactBudget app on the "Validate Account" screen:
+
+Validation Code: ${validationCode}
+
+This code will expire in 15 minutes for security purposes.
 
 If you didn't create this account, please ignore this email.
 
@@ -117,7 +146,7 @@ ReactBudget - Your Personal Finance Management App
   }
 
   /**
-   * Send password reset email (for future use)
+   * Send password reset email with a clickable link and fallback code.
    * @param {string} email - User's email address
    * @param {string} resetToken - Password reset token
    * @param {string} username - User's username
@@ -129,6 +158,11 @@ ReactBudget - Your Personal Finance Management App
         throw new Error('Email transporter not initialized');
       }
 
+      const appBaseUrl = getAppBaseUrl();
+      const resetUrl = `${appBaseUrl}/reset-password?email=${encodeURIComponent(
+        email
+      )}&code=${resetToken}`;
+
       const mailOptions = {
         from: process.env.SMTP_FROM,
         to: email,
@@ -139,13 +173,29 @@ ReactBudget - Your Personal Finance Management App
             
             <p>Hi ${username},</p>
             
-            <p>We received a request to reset your ReactBudget account password. If you made this request, please use the reset code below:</p>
+            <p>We received a request to reset your ReactBudget account password. If you made this request, please reset your password using the button below:</p>
             
-            <div style="background-color: #f5f5f5; padding: 20px; text-align: center; border-radius: 5px; margin: 20px 0;">
-              <h3 style="color: #333; font-family: monospace; letter-spacing: 2px;">${resetToken}</h3>
-            </div>
+            <p style="text-align: center; margin: 24px 0;">
+              <a 
+                href="${resetUrl}"
+                style="
+                  display: inline-block;
+                  padding: 12px 24px;
+                  background-color: #f44336;
+                  color: #ffffff;
+                  text-decoration: none;
+                  border-radius: 4px;
+                  font-weight: 600;
+                "
+              >
+                Reset Password
+              </a>
+            </p>
             
-            <p><strong>Important:</strong> This reset code will expire in 30 minutes for security purposes.</p>
+            <p>If the button above doesn't work, you can copy and paste this link into your browser:</p>
+            <p style="word-break: break-all;">
+              <a href="${resetUrl}">${resetUrl}</a>
+            </p>
             
             <p>If you didn't request this password reset, please ignore this email. Your account remains secure.</p>
             
@@ -162,11 +212,10 @@ Password Reset Request
 
 Hi ${username},
 
-We received a request to reset your ReactBudget account password. If you made this request, please use the reset code below:
+We received a request to reset your ReactBudget account password. If you made this request, you can reset your password using the link below:
 
-Reset Code: ${resetToken}
+${resetUrl}
 
-Important: This reset code will expire in 30 minutes for security purposes.
 
 If you didn't request this password reset, please ignore this email. Your account remains secure.
 

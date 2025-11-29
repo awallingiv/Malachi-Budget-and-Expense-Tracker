@@ -18,7 +18,9 @@ import {
   Chip,
   Searchbar,
   SegmentedButtons,
-  ProgressBar
+  ProgressBar,
+  Checkbox,
+  Button
 } from 'react-native-paper';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -39,6 +41,8 @@ export default function IncomeScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('date');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState([]);
 
   // New income form state
   const [newIncome, setNewIncome] = useState({
@@ -173,13 +177,79 @@ export default function IncomeScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
+              console.log('Deleting income:', incomeId, 'for user:', user.UserId);
               const result = await budgetService.deleteIncome(incomeId, user.UserId);
-              if (result.success) {
+              console.log('Delete result:', result);
+              
+              if (result && result.success) {
                 loadData();
+              } else {
+                const errorMsg = result?.error || result?.message || 'Failed to delete income record';
+                console.error('Delete failed:', errorMsg);
+                Alert.alert('Error', errorMsg);
               }
             } catch (error) {
               console.error('Failed to delete income:', error);
-              setError('Failed to delete income record');
+              const errorMsg = error.response?.data?.error || error.response?.data?.message || error.message || 'Failed to delete income record';
+              Alert.alert('Error', errorMsg);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const toggleSelectIncome = (incomeId) => {
+    setSelectedIds((prev) =>
+      prev.includes(incomeId)
+        ? prev.filter((id) => id !== incomeId)
+        : [...prev, incomeId]
+    );
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.length === 0) return;
+
+    Alert.alert(
+      'Delete Income Records',
+      `Are you sure you want to delete ${selectedIds.length} income record(s)? This action cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Delete', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Delete all selected income records in parallel
+              const deletePromises = selectedIds.map(id => 
+                budgetService.deleteIncome(id, user.UserId)
+              );
+              
+              const results = await Promise.all(deletePromises);
+              
+              // Check if all deletions were successful
+              const allSuccessful = results.every(result => result.success);
+              
+              if (allSuccessful) {
+                // Clear selection and refresh data
+                setSelectedIds([]);
+                setSelectMode(false);
+                loadData();
+              } else {
+                // Some deletions failed
+                const failedCount = results.filter(r => !r.success).length;
+                Alert.alert(
+                  'Partial Success',
+                  `${selectedIds.length - failedCount} income record(s) deleted, but ${failedCount} failed to delete.`
+                );
+                // Still refresh to show updated state
+                setSelectedIds([]);
+                setSelectMode(false);
+                loadData();
+              }
+            } catch (error) {
+              console.error('Failed to delete income records:', error);
+              Alert.alert('Error', error.message || 'Failed to delete income records');
             }
           }
         }
@@ -257,6 +327,12 @@ export default function IncomeScreen() {
     <Card style={styles.incomeCard}>
       <Card.Content>
         <View style={styles.incomeHeader}>
+          {selectMode && (
+            <Checkbox
+              status={selectedIds.includes(item.IncomeId) ? 'checked' : 'unchecked'}
+              onPress={() => toggleSelectIncome(item.IncomeId)}
+            />
+          )}
           <View style={styles.incomeInfo}>
             <Text variant="titleMedium" style={styles.paycheckTitle}>
               {item.Paycheck || 'Paycheck'}
@@ -300,32 +376,34 @@ export default function IncomeScreen() {
               Tithe: {formatCurrency(item.TitheAmount)} ({item.TithePercentage}%)
             </Text>
             
-            <View style={styles.actionButtons}>
-              {item.TitheStatus !== 'paid' && (
-                <Button 
-                  mode="outlined" 
-                  compact
-                  onPress={() => markTithePaid(item.IncomeId)}
-                  style={styles.titheButton}
-                >
-                  Mark Tithe Paid
-                </Button>
-              )}
-              <IconButton
-                icon="pencil"
-                size={20}
-                onPress={() => {
-                  setSelectedIncome(item);
-                  setShowEditModal(true);
-                }}
-              />
-              <IconButton
-                icon="delete"
-                size={20}
-                iconColor="#f44336"
-                onPress={() => handleDeleteIncome(item.IncomeId)}
-              />
-            </View>
+            {!selectMode && (
+              <View style={styles.actionButtons}>
+                {item.TitheStatus !== 'paid' && (
+                  <Button 
+                    mode="outlined" 
+                    compact
+                    onPress={() => markTithePaid(item.IncomeId)}
+                    style={styles.titheButton}
+                  >
+                    Mark Tithe Paid
+                  </Button>
+                )}
+                <IconButton
+                  icon="pencil"
+                  size={20}
+                  onPress={() => {
+                    setSelectedIncome(item);
+                    setShowEditModal(true);
+                  }}
+                />
+                <IconButton
+                  icon="delete"
+                  size={20}
+                  iconColor="#f44336"
+                  onPress={() => handleDeleteIncome(item.IncomeId)}
+                />
+              </View>
+            )}
           </View>
         </View>
         
@@ -389,12 +467,25 @@ export default function IncomeScreen() {
 
       {/* Header Controls */}
       <View style={styles.headerControls}>
-        <Searchbar
-          placeholder="Search income records..."
-          onChangeText={setSearchQuery}
-          value={searchQuery}
-          style={styles.searchbar}
-        />
+        <View style={styles.topBar}>
+          <Searchbar
+            placeholder="Search income records..."
+            onChangeText={setSearchQuery}
+            value={searchQuery}
+            style={styles.searchbar}
+          />
+          <Button
+            mode={selectMode ? 'contained-tonal' : 'outlined'}
+            onPress={() => {
+              setSelectMode(!selectMode);
+              if (selectMode) {
+                setSelectedIds([]);
+              }
+            }}
+          >
+            {selectMode ? 'Cancel select' : 'Select'}
+          </Button>
+        </View>
         
         <View style={styles.filterControls}>
           <SegmentedButtons
@@ -467,12 +558,28 @@ export default function IncomeScreen() {
         )}
       />
 
+      {/* Bulk actions bar */}
+      {selectMode && selectedIds.length > 0 && (
+        <View style={styles.bulkActionsBar}>
+          <Text style={styles.bulkActionsText}>{selectedIds.length} selected</Text>
+          <Button
+            mode="outlined"
+            onPress={handleBulkDelete}
+            textColor="#f44336"
+          >
+            Delete selected
+          </Button>
+        </View>
+      )}
+
       {/* Add Income FAB */}
-      <FAB
-        icon="plus"
-        style={styles.fab}
-        onPress={() => setShowAddModal(true)}
-      />
+      {!selectMode && (
+        <FAB
+          icon="plus"
+          style={styles.fab}
+          onPress={() => setShowAddModal(true)}
+        />
+      )}
 
       {/* Add Income Modal */}
       <Portal>
@@ -675,8 +782,14 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
   },
-  searchbar: {
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     marginBottom: 12,
+  },
+  searchbar: {
+    flex: 1,
   },
   filterControls: {
     marginBottom: 12,
@@ -770,6 +883,23 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     fontSize: 18,
     fontWeight: '500',
+  },
+  bulkActionsBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    padding: 12,
+    backgroundColor: '#ffffff',
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  bulkActionsText: {
+    fontSize: 14,
+    color: '#333',
   },
   fab: {
     position: 'absolute',

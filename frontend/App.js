@@ -7,6 +7,8 @@ import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import ModernDashboard from './src/components/ModernDashboard';
 import DashboardScreen from './src/screens/DashboardScreenNew';
 import LoginScreen from './src/screens/LoginScreen';
+import WebVerifyEmailPage from './src/screens/WebVerifyEmailPage';
+import WebResetPasswordPage from './src/screens/WebResetPasswordPage';
 
 function AppContent() {
   const { isDark } = useTheme();
@@ -33,17 +35,37 @@ function AppContent() {
       );
     }
     
-    // If not logged in, show login screen
+    // Platform-specific rendering
+    if (Platform.OS === 'web') {
+      // Handle special web-only routes for email verification and password reset
+      const path =
+        typeof window !== 'undefined' && window.location && window.location.pathname
+          ? window.location.pathname
+          : '/';
+
+      if (path.startsWith('/verify-email')) {
+        return <WebVerifyEmailPage />;
+      }
+
+      if (path.startsWith('/reset-password')) {
+        return <WebResetPasswordPage />;
+      }
+
+      // If not logged in, show login screen
+      if (!user) {
+        return <LoginScreen />;
+      }
+
+      // Default web dashboard
+      return <ModernDashboard />;
+    }
+
+    // Native (mobile) flow
     if (!user) {
       return <LoginScreen />;
     }
-    
-    // Platform-specific rendering (desktop view deprecated; always use modern view on web)
-    if (Platform.OS === 'web') {
-      return <ModernDashboard />;
-    } else {
-      return <DashboardScreen />;
-    }
+
+    return <DashboardScreen />;
   } catch (error) {
     console.error('❌ AppContent error:', error);
     return (
