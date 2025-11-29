@@ -1,48 +1,127 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
-import { Card, Button } from 'react-native-paper';
+import { Card, Button, Chip, Divider, ProgressBar } from 'react-native-paper';
+import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
+import { budgetService } from '../services/apiService';
+import { useNavigation } from '@react-navigation/native';
 
 const DashboardScreen = () => {
+  const { user } = useAuth();
+  const { theme } = useTheme();
+  const navigation = useNavigation();
+  
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [dashboardData, setDashboardData] = useState(null);
+  const [recentTransactions, setRecentTransactions] = useState([]);
+
+  // Get current month date range
+  const getCurrentMonthRange = () => {
+    const now = new Date();
+    const startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return {
+      startDate: startDate.toISOString().split('T')[0],
+      endDate: endDate.toISOString().split('T')[0]
+    };
+  };
+
+  const loadDashboardData = useCallback(async () => {
+    if (!user?.UserId) {
+      setError('User not authenticated');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setError(null);
+      const { startDate, endDate } = getCurrentMonthRange();
+      
+      console.log('📊 Loading dashboard for user:', user.UserId);
+      console.log('📅 Date range:', startDate, 'to', endDate);
+
+      // Load dashboard stats and recent transactions in parallel
+      const [statsData, transactionsData] = await Promise.all([
+        budgetService.getDashboardStats(user.UserId, startDate, endDate),
+        budgetService.getRecentTransactions(user.UserId, 5)
+      ]);
+
+      console.log('📊 Dashboard stats:', statsData);
+      console.log('📋 Recent transactions:', transactionsData);
+
+      setDashboardData(statsData);
+      setRecentTransactions(transactionsData || []);
+    } catch (err) {
+      console.error('❌ Dashboard error:', err);
+      setError(err.message || 'Failed to load dashboard data');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [user?.UserId]);
 
   useEffect(() => {
     loadDashboardData();
-  }, []);
+  }, [loadDashboardData]);
 
-  const loadDashboardData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      console.log('Loading dashboard data for user:', mockUserId);
-      
-      // Simple test data first
-      const testData = {
-        income: { totalGross: 5000, totalNet: 4000, totalTithe: 500 },
-        expenses: { total: 3000 },
-        transactions: [
-          { description: 'Test Transaction', amount: 100, date: new Date() }
-        ]
-      };
-      
-      setDashboardData(testData);
-      setLoading(false);
-    } catch (err) {
-      console.error('Dashboard error:', err);
-      setError(err.message);
-      setLoading(false);
-    }
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    loadDashboardData();
+  }, [loadDashboardData]);
+
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD'
+    }).format(amount || 0);
   };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleDateString();
+  };
+
+  const getCurrentMonth = () => {
+    return new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  };
+
+  // Calculate tithe progress
+  const getTitheProgress = () => {
+    const totalTithe = dashboardData?.income?.totalTithe || 0;
+    const paidTithe = dashboardData?.income?.paidTithe || 0;
+    if (totalTithe === 0) return 0;
+    return Math.min(paidTithe / totalTithe, 1);
+  };
+
+  // Calculate net position
+  const getNetPosition = () => {
+    const totalNet = dashboardData?.income?.totalNet || 0;
+    const totalExpenses = dashboardData?.expenses?.totalAmount || 0;
+    return totalNet - totalExpenses;
+  };
+
+  if (!user) {
+    return (
+      <View style={[styles.centerContainer, { backgroundColor: theme?.background || '#f5f5f5' }]}>
+        <Card style={styles.errorCard}>
+          <Card.Content>
+            <Text style={styles.errorText}>Please log in to view your dashboard</Text>
+          </Card.Content>
+        </Card>
+      </View>
+    );
+  }
 
   if (error) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.centerContainer, { backgroundColor: theme?.background || '#f5f5f5' }]}>
         <Card style={styles.errorCard}>
           <Card.Content>
             <Text style={styles.errorText}>Error: {error}</Text>
-            <Button mode="contained" onPress={loadDashboardData} style={{ marginTop: 10 }}>
+            <Text style={styles.debugText}>User ID: {user?.UserId?.substring(0, 8)}...</Text>
+            <Button mode="contained" onPress={loadDashboardData} style={styles.retryButton}>
               Retry
             </Button>
           </Card.Content>
@@ -53,100 +132,72 @@ const DashboardScreen = () => {
 
   return (
     <ScrollView 
-      style={styles.container}
+      style={[styles.container, { backgroundColor: theme?.background || '#f5f5f5' }]}
       refreshControl={
-        <RefreshControl refreshing={loading} onRefresh={loadDashboardData} />
+        <RefreshControl refreshing={refreshing || loading} onRefresh={onRefresh} />
       }
     >
-      <Text style={styles.title}>ReactBudget Mobile</Text>
-      
-      {loading ? (
-        <Card style={styles.card}>
-          <Card.Content>
-            <Text style={styles.loadingText}>Loading dashboard...</Text>
-          </Card.Content>
-        </Card>
-      ) : (
-        <View>
-          <Card style={styles.card}>
-            <Card.Content>
-              <Text style={styles.cardTitle}>Income Overview</Text>
-              <Text style={styles.statText}>
-                Gross: ${dashboardData?.income?.totalGross?.toFixed(2) || '0.00'}
-              </Text>
-              <Text style={styles.statText}>
-                Net: ${dashboardData?.income?.totalNet?.toFixed(2) || '0.00'}
-              </Text>
-              <Text style={styles.statText}>
-                Tithe: ${dashboardData?.income?.totalTithe?.toFixed(2) || '0.00'}
-              </Text>
-            </Card.Content>
-          </Card>
+      {/* Header */}
+      <View style={styles.header}>
+        <Text variant="headlineSmall" style={styles.welcomeText}>
+          Welcome, {user?.Name || user?.Username || 'User'}!
+        </Text>
+        <Text variant="bodyMedium" style={styles.monthText}>
+          {getCurrentMonth()}
+        </Text>
+      </View>
 
-          <Card style={styles.card}>
-            <Card.Content>
-              <Text style={styles.cardTitle}>Expenses</Text>
-              <Text style={styles.statText}>
-                Total: ${dashboardData?.expenses?.total?.toFixed(2) || '0.00'}
+      {/* Income Overview Card */}
+      <Card style={styles.card}>
+        <Card.Content>
+          <Text variant="titleMedium" style={styles.cardTitle}>💰 Income Overview</Text>
+          <View style={styles.incomeRow}>
+            <View style={styles.incomeItem}>
+              <Text variant="bodySmall" style={styles.label}>Gross</Text>
+              <Text variant="titleMedium" style={styles.amount}>
+                {formatCurrency(dashboardData?.income?.totalGross)}
               </Text>
-            </Card.Content>
-          </Card>
+            </View>
+            <View style={styles.incomeItem}>
+              <Text variant="bodySmall" style={styles.label}>Net</Text>
+              <Text variant="titleMedium" style={styles.amount}>
+                {formatCurrency(dashboardData?.income?.totalNet)}
+              </Text>
+            </View>
+            <View style={styles.incomeItem}>
+              <Text variant="bodySmall" style={styles.label}>Tithe</Text>
+              <Text variant="titleMedium" style={[styles.amount, { color: '#ff9800' }]}>
+                {formatCurrency(dashboardData?.income?.totalTithe)}
+              </Text>
+            </View>
+          </View>
+          
+          <Divider style={styles.divider} />
+          
+          {/* Tithe Progress */}
+          <View style={styles.titheSection}>
+            <View style={styles.titheHeader}>
+              <Text variant="bodyMedium">Tithe Progress</Text>
+              <Text variant="bodySmall" style={styles.titheAmount}>
+                {formatCurrency(dashboardData?.income?.paidTithe || 0)} / {formatCurrency(dashboardData?.income?.totalTithe)}
+              </Text>
+            </View>
+            <ProgressBar 
+              progress={getTitheProgress()} 
+              color={getTitheProgress() >= 1 ? '#4CAF50' : '#ff9800'} 
+              style={styles.progressBar}
+            />
+          </View>
+        </Card.Content>
+      </Card>
 
-          <Card style={styles.card}>
-            <Card.Content>
-              <Text style={styles.cardTitle}>Platform Info</Text>
-              <Text style={styles.statText}>Mobile Dashboard Working!</Text>
-              <Text style={styles.statText}>User: {mockUserId.substring(0, 8)}...</Text>
-            </Card.Content>
-          </Card>
-        </View>
-      )}
-    </ScrollView>
-  );
-};
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-    padding: 16,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 20,
-    color: '#333',
-  },
-  card: {
-    marginBottom: 16,
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 12,
-    color: '#333',
-  },
-  statText: {
-    fontSize: 16,
-    marginBottom: 8,
-    color: '#666',
-  },
-  errorCard: {
-    backgroundColor: '#ffebee',
-  },
-  errorText: {
-    color: '#d32f2f',
-    fontSize: 16,
-  },
-  loadingText: {
-    fontSize: 16,
-    textAlign: 'center',
-    color: '#666',
-  },
-});
-
-export default DashboardScreen;
+      {/* Expenses Card */}
+      <Card style={styles.card}>
+        <Card.Content>
+          <Text variant="titleMedium" style={styles.cardTitle}>📉 Expenses by Category</Text>
+          {dashboardData?.expenses?.categories && dashboardData.expenses.categories.length > 0 ? (
+            dashboardData.expenses.categories.map((category, index) => (
+              <View key={index} style={styles.categoryRow}>
                 <View style={styles.categoryInfo}>
                   <Text variant="bodyMedium" style={styles.categoryName}>
                     {category.TableName || category.tablename || 'Unknown'}
@@ -165,7 +216,7 @@ export default DashboardScreen;
               No expense data for this month
             </Text>
           )}
-          {dashboardData?.expenses?.totalAmount && (
+          {dashboardData?.expenses?.totalAmount != null && (
             <>
               <Divider style={styles.divider} />
               <View style={styles.totalRow}>
@@ -186,10 +237,9 @@ export default DashboardScreen;
             <Text variant="titleMedium">📊 Net Position</Text>
             <Text variant="headlineSmall" style={[
               styles.netAmount,
-              (dashboardData?.income?.totalNet || 0) - (dashboardData?.expenses?.totalAmount || 0) >= 0 
-                ? styles.positive : styles.negative
+              getNetPosition() >= 0 ? styles.positive : styles.negative
             ]}>
-              {formatCurrency((dashboardData?.income?.totalNet || 0) - (dashboardData?.expenses?.totalAmount || 0))}
+              {formatCurrency(getNetPosition())}
             </Text>
           </View>
         </Card.Content>
@@ -233,10 +283,18 @@ export default DashboardScreen;
         <Card.Content>
           <Text variant="titleMedium" style={styles.cardTitle}>⚡ Quick Actions</Text>
           <View style={styles.actionButtons}>
-            <Button mode="contained" style={styles.actionButton} onPress={() => {}}>
+            <Button 
+              mode="contained" 
+              style={styles.actionButton} 
+              onPress={() => navigation.navigate('Income')}
+            >
               Add Income
             </Button>
-            <Button mode="outlined" style={styles.actionButton} onPress={() => {}}>
+            <Button 
+              mode="outlined" 
+              style={styles.actionButton} 
+              onPress={() => navigation.navigate('Transactions')}
+            >
               Add Expense
             </Button>
           </View>
@@ -244,7 +302,7 @@ export default DashboardScreen;
       </Card>
     </ScrollView>
   );
-}
+};
 
 const styles = StyleSheet.create({
   container: {
@@ -278,6 +336,7 @@ const styles = StyleSheet.create({
   },
   errorCard: {
     backgroundColor: '#ffebee',
+    margin: 20,
   },
   errorText: {
     color: '#d32f2f',
@@ -324,6 +383,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 10,
+  },
+  titheAmount: {
+    color: '#666',
   },
   progressBar: {
     height: 8,
@@ -423,3 +485,5 @@ const styles = StyleSheet.create({
     flex: 0.45,
   },
 });
+
+export default DashboardScreen;

@@ -8,9 +8,10 @@ import { Platform } from 'react-native';
  * running on devices/emulators can talk to the local backend.
  */
 const resolveApiBaseUrl = () => {
-  // Mobile-only: Use EAS-configured API URL from app.config.js extra
+  // Mobile-only: Use EAS-configured API URL from app.config.js extra (for EAS builds)
   if (Platform.OS !== 'web') {
     const easApiUrl = Constants.expoConfig?.extra?.apiUrl;
+    console.log('📱 Mobile detected, EAS apiUrl:', easApiUrl);
     if (easApiUrl) {
       return easApiUrl.replace(/\/$/, '');
     }
@@ -22,21 +23,27 @@ const resolveApiBaseUrl = () => {
     process.env.API_BASE_URL;
 
   if (envOverride) {
+    console.log('🔧 Using env override:', envOverride);
     return envOverride.replace(/\/$/, '');
   }
 
+  // Production builds (non-dev) use the production URL
   if (!__DEV__) {
+    console.log('🚀 Production mode detected');
     return 'https://budget.austinwalling.dev/api';
   }
 
-  // Try to infer the LAN IP from Expo/Metro host
+  // Try to infer the LAN IP from Expo/Metro host (works for local development)
   const expoHost =
     Constants.expoConfig?.hostUri ||
     Constants.expoConfig?.debuggerHost ||
     Constants.manifest?.debuggerHost;
 
+  console.log('🔍 Expo host info:', expoHost);
+
   if (expoHost) {
     const host = expoHost.split(':')[0];
+    console.log('🏠 Using LAN IP from Expo:', host);
     return `http://${host}:3002/api`;
   }
 
@@ -50,7 +57,7 @@ const resolveApiBaseUrl = () => {
 };
 
 const API_BASE_URL = resolveApiBaseUrl();
-console.log('🌐 API Base URL:', API_BASE_URL);
+console.log('🌐 Final API Base URL:', API_BASE_URL);
 
 const api = axios.create({
   baseURL: API_BASE_URL,
