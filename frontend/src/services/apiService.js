@@ -1,12 +1,21 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
 /**
  * Resolve the API base URL with several fallbacks so Expo clients
  * running on devices/emulators can talk to the local backend.
  */
 const resolveApiBaseUrl = () => {
+  // Mobile-only: Use EAS-configured API URL from app.config.js extra
+  if (Platform.OS !== 'web') {
+    const easApiUrl = Constants.expoConfig?.extra?.apiUrl;
+    if (easApiUrl) {
+      return easApiUrl.replace(/\/$/, '');
+    }
+  }
+
   const envOverride =
     process.env.EXPO_PUBLIC_API_BASE_URL ||
     process.env.REACT_APP_API_BASE_URL ||
