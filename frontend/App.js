@@ -5,7 +5,7 @@ import { Provider as PaperProvider } from 'react-native-paper';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import ModernDashboard from './src/components/ModernDashboard';
-import DashboardScreen from './src/screens/DashboardScreenNew';
+import MobileNavigator from './src/navigation/MobileNavigator';
 import LoginScreen from './src/screens/LoginScreen';
 import WebVerifyEmailPage from './src/screens/WebVerifyEmailPage';
 import WebResetPasswordPage from './src/screens/WebResetPasswordPage';
@@ -65,7 +65,7 @@ function AppContent() {
       return <LoginScreen />;
     }
 
-    return <DashboardScreen />;
+    return <MobileNavigator />;
   } catch (error) {
     console.error('❌ AppContent error:', error);
     return (
