@@ -7,20 +7,23 @@ import {
   Animated,
   Pressable,
   Platform,
-  Dimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../context/ThemeContext';
 
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
-
 const MobileFAB = ({ onAddExpense, onAddIncome }) => {
-  const { theme, isDark } = useTheme();
+  const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
   const [isOpen, setIsOpen] = useState(false);
   
   const rotateAnim = useRef(new Animated.Value(0)).current;
   const backdropAnim = useRef(new Animated.Value(0)).current;
   const expenseAnim = useRef(new Animated.Value(0)).current;
   const incomeAnim = useRef(new Animated.Value(0)).current;
+
+  // Calculate bottom position accounting for tab bar and safe area
+  const tabBarHeight = Platform.OS === 'ios' ? 88 : 56 + Math.max(insets.bottom, 8);
+  const fabBottom = tabBarHeight + 16;
 
   useEffect(() => {
     if (isOpen) {
@@ -133,7 +136,7 @@ const MobileFAB = ({ onAddExpense, onAddIncome }) => {
         </Animated.View>
       )}
 
-      <View style={styles.container} pointerEvents="box-none">
+      <View style={[styles.container, { bottom: fabBottom }]} pointerEvents="box-none">
         {/* Add Expense Mini FAB */}
         <Animated.View
           style={[
@@ -189,7 +192,7 @@ const MobileFAB = ({ onAddExpense, onAddIncome }) => {
             style={[
               styles.mainFab,
               {
-                backgroundColor: isOpen ? theme.primary : theme.primary,
+                backgroundColor: theme.primary,
                 shadowColor: theme.shadowColor,
               },
             ]}
@@ -215,7 +218,6 @@ const styles = StyleSheet.create({
   container: {
     position: 'absolute',
     right: 20,
-    bottom: Platform.OS === 'ios' ? 100 : 80,
     flexDirection: 'row',
     alignItems: 'center',
     zIndex: 999,

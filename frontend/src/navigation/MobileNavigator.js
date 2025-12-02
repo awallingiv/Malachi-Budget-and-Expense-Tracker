@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../context/ThemeContext';
 
 // Screens
@@ -14,7 +15,8 @@ import ProfileScreen from '../screens/ProfileScreen';
 const Tab = createBottomTabNavigator();
 
 export default function MobileNavigator() {
-  const { theme, isDark } = useTheme();
+  const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
 
   const getTabBarIcon = (routeName, focused, color, size) => {
     let iconName;
@@ -39,6 +41,10 @@ export default function MobileNavigator() {
     return <MaterialCommunityIcons name={iconName} size={size} color={color} />;
   };
 
+  // Calculate proper bottom padding for Android system navigation
+  const bottomPadding = Platform.OS === 'ios' ? 24 : Math.max(insets.bottom, 8);
+  const tabBarHeight = Platform.OS === 'ios' ? 88 : 56 + Math.max(insets.bottom, 8);
+
   return (
     <NavigationContainer>
       <Tab.Navigator
@@ -52,8 +58,8 @@ export default function MobileNavigator() {
             borderTopColor: theme.border,
             borderTopWidth: 1,
             paddingTop: 8,
-            paddingBottom: Platform.OS === 'ios' ? 24 : 8,
-            height: Platform.OS === 'ios' ? 88 : 64,
+            paddingBottom: bottomPadding,
+            height: tabBarHeight,
             elevation: theme.elevation?.medium || 8,
             shadowColor: theme.shadowColor,
             shadowOffset: { width: 0, height: -4 },

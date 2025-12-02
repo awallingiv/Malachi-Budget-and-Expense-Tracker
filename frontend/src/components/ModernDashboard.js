@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   View, 
   Text, 
@@ -16,6 +16,7 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { budgetService } from '../services/apiService';
 import { useSmartDefaults } from '../hooks/useSmartDefaults';
+import MonthSelector from './MonthSelector';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -253,6 +254,10 @@ const ModernDashboard = () => {
   const [budgets, setBudgets] = useState([]);
   const [selectedCashflowMonth, setSelectedCashflowMonth] = useState(null);
   
+  // Month/Date selection for filtering
+  const [selectedMonth, setSelectedMonth] = useState(new Date());
+  const [customDateRange, setCustomDateRange] = useState(null);
+  
   // Modal states
   const [showIncomeModal, setShowIncomeModal] = useState(false);
   const [showExpenseModal, setShowExpenseModal] = useState(false);
@@ -341,16 +346,66 @@ const ModernDashboard = () => {
     return 'Good evening';
   };
 
-  // Calculate totals
-  const totalGross = incomeList.reduce((sum, i) => sum + (parseFloat(i.Gross) || 0), 0);
-  const totalNet = incomeList.reduce((sum, i) => sum + (parseFloat(i.Net) || 0), 0);
-  const totalTithe = incomeList.reduce((sum, i) => sum + (parseFloat(i.Tithe) || 0), 0);
-  const totalExpenses = transactions.reduce((sum, t) => sum + (parseFloat(t.Amount) || 0), 0);
+  // Get date range based on selected month or custom range
+  const getDateRange = () => {
+    if (customDateRange) {
+      return customDateRange;
+    }
+    
+    const year = selectedMonth.getFullYear();
+    const month = selectedMonth.getMonth();
+    const start = new Date(year, month, 1);
+    const end = new Date(year, month + 1, 0);
+    
+    return {
+      start: start.toISOString().split('T')[0],
+      end: end.toISOString().split('T')[0],
+    };
+  };
+
+  // Filter transactions by date range
+  const filteredTransactions = useMemo(() => {
+    const { start, end } = getDateRange();
+    return transactions.filter(t => {
+      const date = t.Date || t.CreationTime;
+      if (!date) return false;
+      const txDate = date.split('T')[0];
+      return txDate >= start && txDate <= end;
+    });
+  }, [transactions, selectedMonth, customDateRange]);
+
+  // Filter income by date range
+  const filteredIncome = useMemo(() => {
+    const { start, end } = getDateRange();
+    return incomeList.filter(i => {
+      const date = i.Date || i.PaycheckDate;
+      if (!date) return false;
+      const incDate = date.split('T')[0];
+      return incDate >= start && incDate <= end;
+    });
+  }, [incomeList, selectedMonth, customDateRange]);
+
+  // Handle month change
+  const handleMonthChange = (newDate) => {
+    setCustomDateRange(null);
+    setSelectedMonth(newDate);
+  };
+
+  // Handle custom date range
+  const handleCustomRange = (start, end) => {
+    setCustomDateRange({ start, end });
+  };
+
+  // Calculate totals from FILTERED data
+  const totalGross = filteredIncome.reduce((sum, i) => sum + (parseFloat(i.Gross) || 0), 0);
+  const totalNet = filteredIncome.reduce((sum, i) => sum + (parseFloat(i.Net) || 0), 0);
+  const totalTithe = filteredIncome.reduce((sum, i) => sum + (parseFloat(i.Tithe) || 0), 0);
+  const totalExpenses = filteredTransactions.reduce((sum, t) => sum + (parseFloat(t.Amount) || 0), 0);
   const netPosition = totalNet - totalExpenses;
   const savingsRate = totalNet > 0 ? ((totalNet - totalExpenses) / totalNet) * 100 : 0;
 
-  // Group transactions by TableName for category totals
-  const categoryTotals = transactions.reduce((acc, txn) => {
+  // Group FILTERED transactions by TableName for category totals
+  const categoryTotals = filteredTransactions.reduce((acc, txn) => {
     const table = txn.TableName || 'Other';
     if (!acc[table]) {
       acc[table] = { TableName: table, totalAmount: 0, transactionCount: 0 };
@@ -765,6 +820,25 @@ const ModernDashboard = () => {
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* Month Selector */}
+        <MonthSelector
+          selectedDate={selectedMonth}
+          onDateChange={handleMonthChange}
+          onCustomRange={handleCustomRange}
+        />
+
+        {/* Custom Range Indicator */}
+        {customDateRange && (
+          <View style={[styles.customRangeBar, { backgroundColor: colors.inputBg }]}>
+            <Text style={[styles.customRangeText, { color: colors.textMuted }]}>
+              Showing: {customDateRange.start} to {customDateRange.end}
+            </Text>
+            <TouchableOpacity onPress={() => setCustomDateRange(null)}>
+              <Text style={[styles.clearRangeText, { color: colors.primary }]}>Clear</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Net Position Hero */}
         <AnimatedCard delay={0} cardStyle={dynamicStyles.card} style={styles.heroCard}>
@@ -1327,6 +1401,22 @@ const styles = StyleSheet.create({
   logoutText: {
     color: defaultColors.textMuted,
     fontSize: 14,
+  },
+  customRangeBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+    marginBottom: 16,
+  },
+  customRangeText: {
+    fontSize: 13,
+  },
+  clearRangeText: {
+    fontSize: 13,
+    fontWeight: '600',
   },
   card: {
     backgroundColor: defaultColors.cardBg,
