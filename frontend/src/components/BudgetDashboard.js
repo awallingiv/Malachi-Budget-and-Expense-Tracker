@@ -13,7 +13,7 @@ import {
 
 const { width, height } = Dimensions.get('window');
 
-// Simple budget dashboard with modern dark theme
+// Simple budget dashboard with modern dark theme .
 const BudgetDashboard = () => {
   const [showAddIncome, setShowAddIncome] = useState(false);
   const [showAddExpense, setShowAddExpense] = useState(false);
