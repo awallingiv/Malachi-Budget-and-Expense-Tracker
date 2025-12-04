@@ -39,7 +39,7 @@ const DraggableWindow = ({
     onPanResponderMove: (evt, gestureState) => {
       if (isLocked) return;
       
-      // Use direct setValue for smoother performance
+      // Use direct setValue for smoother performance.
       pan.setValue({
         x: gestureState.dx,
         y: gestureState.dy

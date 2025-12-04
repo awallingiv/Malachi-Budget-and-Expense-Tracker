@@ -13,7 +13,7 @@ import {
 
 const { width, height } = Dimensions.get('window');
 
-// Simple budget dashboard with modern dark theme .
+// Simple budget dashboard with modern dark theme ...
 const BudgetDashboard = () => {
   const [showAddIncome, setShowAddIncome] = useState(false);
   const [showAddExpense, setShowAddExpense] = useState(false);
@@ -22,7 +22,7 @@ const BudgetDashboard = () => {
   const [newIncome, setNewIncome] = useState({ description: '', amount: '', date: '' });
   const [newExpense, setNewExpense] = useState({ description: '', amount: '', category: '', date: '' });
 
-  // Mock data for development
+  // Mock data for development..
   const [dashboardStats, setDashboardStats] = useState({
     totalIncome: 5000,
     totalExpenses: 3200,
