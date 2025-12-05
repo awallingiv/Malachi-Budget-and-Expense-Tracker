@@ -141,7 +141,7 @@ router.get('/dashboard/:userId', async (req, res) => {
     // Try stored procedure first, fallback to queries
     let result;
     try {
-      result = await executeStoredProcedure('sprb_GetDashboardStats', {
+      result = await executeStoredProcedure('spmb_GetDashboardStats', {
         UserId: { type: sql.UniqueIdentifier, value: userId },
         StartDate: { type: sql.Date, value: startDate ? new Date(startDate) : null },
         EndDate: { type: sql.Date, value: endDate ? new Date(endDate) : null }
@@ -982,7 +982,7 @@ router.get('/transactions/:userId', async (req, res) => {
       params.TableName = { type: sql.NVarChar, value: category };
     }
 
-    const result = await executeStoredProcedure('sprb_GetTransactionsByUserID', params);
+    const result = await executeStoredProcedure('spmb_GetTransactionsByUserID', params);
 
     let transactions = result.recordset || [];
     console.log(`Found ${transactions.length} base transactions for category: ${category || 'all'}`);
@@ -1059,7 +1059,7 @@ router.get('/categories/:userId', [
     const { userId } = req.params;
 
     // Get unique categories from user's transactions
-    const result = await executeStoredProcedure('sprb_GetTransactionsByUserID', {
+    const result = await executeStoredProcedure('spmb_GetTransactionsByUserID', {
       UserId: { type: sql.UniqueIdentifier, value: userId }
     });
 
@@ -1154,7 +1154,7 @@ router.post('/transactions', [
       }
     }
 
-    const result = await executeStoredProcedure('sprb_InsertTransaction', {
+    const result = await executeStoredProcedure('spmb_InsertTransaction', {
       UserID: { type: sql.UniqueIdentifier, value: UserID },
       Username: { type: sql.VarChar(17), value: Username },
       TableName: { type: sql.VarChar(20), value: TableName },
@@ -1261,7 +1261,7 @@ router.put('/transactions/:transactionId', [
       }
     }
 
-    const result = await executeStoredProcedure('sprb_UpdateTransaction', {
+    const result = await executeStoredProcedure('spmb_UpdateTransaction', {
       TransactionId: { type: sql.UniqueIdentifier, value: transactionId },
       Description: { type: sql.VarChar(150), value: Description || null },
       Amount: { type: sql.Float, value: Amount || null },
@@ -1330,7 +1330,7 @@ router.delete('/transactions/:transactionId', [
       });
     }
 
-    const result = await executeStoredProcedure('sprb_DeleteTransaction', {
+    const result = await executeStoredProcedure('spmb_DeleteTransaction', {
       TransactionId: { type: sql.UniqueIdentifier, value: transactionId },
       UserID: { type: sql.UniqueIdentifier, value: req.user.UserId }
     });
@@ -1380,7 +1380,7 @@ router.get('/income/:userId', async (req, res) => {
     // Try stored procedure first, fallback to direct query
     let result;
     try {
-      result = await executeStoredProcedure('sprb_GetIncomeByUsernameAndDate', {
+      result = await executeStoredProcedure('spmb_GetIncomeByUsernameAndDate', {
         UserId: { type: sql.UniqueIdentifier, value: userId },
         StartDate: { type: sql.DateTime, value: startDate ? new Date(startDate) : null },
         EndDate: { type: sql.DateTime, value: endDate ? new Date(endDate) : null }
@@ -1451,7 +1451,7 @@ router.post('/income', [
       });
     }
 
-    const result = await executeStoredProcedure('sprb_InsertIncome', {
+    const result = await executeStoredProcedure('spmb_InsertIncome', {
       Username: { type: sql.VarChar(17), value: Username },
       UserID: { type: sql.UniqueIdentifier, value: UserID },
       Description: { type: sql.VarChar(45), value: Description || null },
@@ -1494,7 +1494,7 @@ router.get('/windows/:userId', [
   try {
     const { userId } = req.params;
 
-    const result = await executeStoredProcedure('sprb_GetCategoryWindows', {
+    const result = await executeStoredProcedure('spmb_GetCategoryWindows', {
       UserID: { type: sql.UniqueIdentifier, value: userId }
     });
 
@@ -1547,7 +1547,7 @@ router.post('/windows', [
       });
     }
 
-    const result = await executeStoredProcedure('sprb_CreateCategoryWindow', {
+    const result = await executeStoredProcedure('spmb_CreateCategoryWindow', {
       UserID: { type: sql.UniqueIdentifier, value: UserID },
       Username: { type: sql.VarChar(17), value: Username },
       CategoryName: { type: sql.VarChar(50), value: CategoryName },
@@ -1617,7 +1617,7 @@ router.put('/windows/:windowId', [
       });
     }
 
-    const result = await executeStoredProcedure('sprb_UpdateCategoryWindow', {
+    const result = await executeStoredProcedure('spmb_UpdateCategoryWindow', {
       WindowID: { type: sql.UniqueIdentifier, value: windowId },
       UserID: { type: sql.UniqueIdentifier, value: UserID },
       DisplayName: { type: sql.VarChar(100), value: DisplayName || null },
@@ -1667,7 +1667,7 @@ router.delete('/windows/:windowId', [
       });
     }
 
-    const result = await executeStoredProcedure('sprb_DeleteCategoryWindow', {
+    const result = await executeStoredProcedure('spmb_DeleteCategoryWindow', {
       WindowID: { type: sql.UniqueIdentifier, value: windowId },
       UserID: { type: sql.UniqueIdentifier, value: userId }
     });
@@ -1703,7 +1703,7 @@ router.get('/windows/:userId/transactions/:categoryName', [
     const { userId, categoryName } = req.params;
     const { startDate, endDate, limit } = req.query;
 
-    const result = await executeStoredProcedure('sprb_GetWindowTransactions', {
+    const result = await executeStoredProcedure('spmb_GetWindowTransactions', {
       UserID: { type: sql.UniqueIdentifier, value: userId },
       CategoryName: { type: sql.VarChar(50), value: categoryName },
       StartDate: { type: sql.Date, value: startDate ? new Date(startDate) : null },
@@ -1745,7 +1745,7 @@ router.post('/windows/positions', [
       });
     }
 
-    const result = await executeStoredProcedure('sprb_UpdateWindowPositions', {
+    const result = await executeStoredProcedure('spmb_UpdateWindowPositions', {
       UserID: { type: sql.UniqueIdentifier, value: UserID },
       WindowUpdates: { type: sql.NVarChar(sql.MAX), value: JSON.stringify(WindowUpdates) }
     });
@@ -1804,7 +1804,7 @@ router.put('/income/:incomeId', [
       });
     }
 
-    const result = await executeStoredProcedure('sprb_UpdateIncome', {
+    const result = await executeStoredProcedure('spmb_UpdateIncome', {
       IncomeId: { type: sql.UniqueIdentifier, value: incomeId },
       UserID: { type: sql.UniqueIdentifier, value: UserID },
       Description: { type: sql.VarChar(45), value: Description || null },
@@ -1867,7 +1867,7 @@ router.delete('/income/:incomeId', [
       });
     }
 
-    const result = await executeStoredProcedure('sprb_DeleteIncome', {
+    const result = await executeStoredProcedure('spmb_DeleteIncome', {
       IncomeId: { type: sql.UniqueIdentifier, value: incomeId },
       UserID: { type: sql.UniqueIdentifier, value: userId }
     });

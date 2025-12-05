@@ -45,7 +45,7 @@ router.post('/register', [
   try {
     const { username, password, email, name } = req.body;
 
-    const result = await executeStoredProcedure('sprb_InsertUser', {
+    const result = await executeStoredProcedure('spmb_InsertUser', {
       Username: { type: sql.VarChar(17), value: username },
       Pass: { type: sql.VarChar(16), value: password },
       Email: { type: sql.VarChar(45), value: email },
@@ -108,7 +108,7 @@ router.post('/validate', [
   try {
     const { usernameOrEmail, password, validationCode } = req.body;
 
-    const result = await executeStoredProcedure('sprb_RegisterUser', {
+    const result = await executeStoredProcedure('spmb_RegisterUser', {
       UsernameOrEmail: { type: sql.VarChar(50), value: usernameOrEmail },
       Pass: { type: sql.VarChar(16), value: password },
       ValidationCode: { type: sql.UniqueIdentifier, value: validationCode }
@@ -146,7 +146,7 @@ router.post('/login', [
     const { usernameOrEmail, password } = req.body;
 
     // Try login with username first
-    let result = await executeStoredProcedure('sprb_LoginUserWithUsername', {
+    let result = await executeStoredProcedure('spmb_LoginUserWithUsername', {
       Username: { type: sql.VarChar(17), value: usernameOrEmail },
       Password: { type: sql.VarChar(16), value: password }
     });
@@ -155,7 +155,7 @@ router.post('/login', [
 
     // If username login failed and input looks like email, try email login
     if (!response.Success && usernameOrEmail.includes('@')) {
-      result = await executeStoredProcedure('sprb_LoginUserWithEmail', {
+      result = await executeStoredProcedure('spmb_LoginUserWithEmail', {
         Email: { type: sql.VarChar(50), value: usernameOrEmail },
         Password: { type: sql.VarChar(16), value: password }
       });
@@ -203,7 +203,7 @@ router.post('/forgot-password', [
   try {
     const { usernameOrEmail } = req.body;
 
-    const result = await executeStoredProcedure('sprb_UpdateValidationCode', {
+    const result = await executeStoredProcedure('spmb_UpdateValidationCode', {
       UsernameOrEmail: { type: sql.VarChar(50), value: usernameOrEmail }
     });
 
@@ -279,7 +279,7 @@ router.get(
     try {
       const { email, code } = req.query;
 
-      const result = await executeStoredProcedure('sprb_VerifyEmailWithCode', {
+      const result = await executeStoredProcedure('spmb_VerifyEmailWithCode', {
         Email: { type: sql.VarChar(45), value: email },
         ValidationCode: { type: sql.UniqueIdentifier, value: code },
       });
@@ -328,7 +328,7 @@ router.post(
       const { email, code, newPassword } = req.body;
 
       // First, verify the code is valid for this email and not expired
-      const verifyResult = await executeStoredProcedure('sprb_VerifyEmailWithCode', {
+      const verifyResult = await executeStoredProcedure('spmb_VerifyEmailWithCode', {
         Email: { type: sql.VarChar(45), value: email },
         ValidationCode: { type: sql.UniqueIdentifier, value: code },
       });
@@ -343,7 +343,7 @@ router.post(
       }
 
       // Update the user's password and mark as validated
-      const updateResult = await executeStoredProcedure('sprb_UpdateUserPassword', {
+      const updateResult = await executeStoredProcedure('spmb_UpdateUserPassword', {
         UserID: { type: sql.UniqueIdentifier, value: verifyResponse.UserId },
         NewPassword: { type: sql.VarChar(16), value: newPassword },
       });

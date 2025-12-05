@@ -137,7 +137,7 @@ console.log('   ✅ .env file configured correctly\n');
 console.log('🛠️  COMMON ISSUES TO WATCH FOR:');
 console.log('   • Port 3002 already in use');
 console.log('   • Database connection timeout');
-console.log('   • Missing stored procedures (sprb_*)');
+console.log('   • Missing stored procedures (spmb_*)');
 console.log('   • JWT secret not configured');
 console.log('   • CORS issues with requests');
 console.log('   • Rate limiting blocking rapid tests\n');

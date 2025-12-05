@@ -10,7 +10,7 @@ router.get('/tables/:userId', protect, async (req, res) => {
     const { userId } = req.params;
     console.log('📊 Getting tables for user:', userId);
 
-    const result = await executeStoredProcedure('sprb_GetTablesForUser', {
+    const result = await executeStoredProcedure('spmb_GetTablesForUser', {
       UserID: { type: sql.UniqueIdentifier, value: userId }
     });
 
@@ -33,7 +33,7 @@ router.get('/windows/:userId', protect, async (req, res) => {
     const { userId } = req.params;
     console.log('🪟 Getting category windows for user:', userId);
 
-    const result = await executeStoredProcedure('sprb_GetCategoryWindows', {
+    const result = await executeStoredProcedure('spmb_GetCategoryWindows', {
       UserID: { type: sql.UniqueIdentifier, value: userId }
     });
 
@@ -69,7 +69,7 @@ router.post('/windows', protect, async (req, res) => {
 
     console.log('🏗️ Creating category window:', { categoryName, displayName, tableName });
 
-    const result = await executeStoredProcedure('sprb_CreateCategoryWindow', {
+    const result = await executeStoredProcedure('spmb_CreateCategoryWindow', {
       UserID: { type: sql.UniqueIdentifier, value: userId },
       Username: { type: sql.VarChar(17), value: username },
       CategoryName: { type: sql.VarChar(50), value: categoryName },
@@ -120,7 +120,7 @@ router.put('/windows/:windowId', protect, async (req, res) => {
 
     console.log('🔄 Updating category window:', windowId);
 
-    const result = await executeStoredProcedure('sprb_UpdateCategoryWindow', {
+    const result = await executeStoredProcedure('spmb_UpdateCategoryWindow', {
       WindowID: { type: sql.UniqueIdentifier, value: windowId },
       UserID: { type: sql.UniqueIdentifier, value: userId },
       DisplayName: displayName ? { type: sql.VarChar(100), value: displayName } : undefined,
@@ -160,7 +160,7 @@ router.delete('/windows/:windowId', protect, async (req, res) => {
 
     console.log('🗑️ Deleting category window:', windowId);
 
-    const result = await executeStoredProcedure('sprb_DeleteCategoryWindow', {
+    const result = await executeStoredProcedure('spmb_DeleteCategoryWindow', {
       WindowID: { type: sql.UniqueIdentifier, value: windowId },
       UserID: { type: sql.UniqueIdentifier, value: userId }
     });
