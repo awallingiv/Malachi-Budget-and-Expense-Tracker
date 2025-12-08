@@ -133,7 +133,7 @@ const WebResetPasswordPage = () => {
           <View style={styles.logoIcon}>
             <Text style={styles.logoEmoji}>💰</Text>
           </View>
-          <Text style={styles.logoText}>ReactBudget</Text>
+          <Text style={styles.logoText}>Malachi</Text>
         </View>
 
         {/* Card */}

@@ -69,7 +69,7 @@ export default function RegisterScreen({ navigation }) {
         <Card style={styles.card}>
           <Card.Content>
             <Text variant="headlineMedium" style={styles.title}>
-              Create ReactBudget Account
+              Create Malachi Account
             </Text>
             
             <TextInput

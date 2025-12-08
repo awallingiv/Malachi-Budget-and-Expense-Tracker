@@ -249,7 +249,7 @@ export default function LoginScreen({ navigation }) {
             <View style={styles.logoIcon}>
               <Text style={styles.logoEmoji}>💰</Text>
             </View>
-            <Text style={styles.logoText}>ReactBudget</Text>
+            <Text style={styles.logoText}>Malachi</Text>
             <Text style={styles.logoSubtext}>Take control of your finances</Text>
           </Animated.View>
 

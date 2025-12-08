@@ -29,7 +29,7 @@ function AppContent() {
     if (isLoading) {
       return (
         <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0a0f1a' : '#f5f5f5', justifyContent: 'center', alignItems: 'center' }}>
-          <Text style={{ color: isDark ? 'white' : '#333', fontSize: 28, fontWeight: '700' }}>ReactBudget</Text>
+          <Text style={{ color: isDark ? 'white' : '#333', fontSize: 28, fontWeight: '700' }}>Malachi: Budget, Expense, and Tithe Tracking</Text>
           <Text style={{ color: '#666', fontSize: 14, marginTop: 10 }}>Loading...</Text>
         </SafeAreaView>
       );

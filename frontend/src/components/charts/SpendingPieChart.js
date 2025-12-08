@@ -19,7 +19,7 @@ const SpendingPieChart = ({ data = [], title = 'Spending Breakdown' }) => {
     name: item.category || item.Category || 'Unknown',
     amount: parseFloat(item.totalAmount || item.amount || 0),
     color: colors[index % colors.length],
-    legendFontColor: theme.dark ? '#FFFFFF' : '#333333',
+    legendFontColor: theme.dark ? '#FFFFFF' : '#1a1a2e',
     legendFontSize: 12
   }));
 
@@ -29,26 +29,24 @@ const SpendingPieChart = ({ data = [], title = 'Spending Breakdown' }) => {
   // Handle empty data state
   if (!data || data.length === 0 || total === 0) {
     return (
-      <Card style={styles.card}>
-        <Card.Content>
-          <Text variant="titleMedium" style={styles.title}>{title}</Text>
+      <View style={styles.card}>
+          {title ? <Text variant="titleMedium" style={[styles.title, { color: theme.dark ? '#fff' : '#1a1a2e' }]}>{title}</Text> : null}
           <View style={styles.emptyState}>
-            <Text variant="bodyLarge" style={{ color: theme.colors.onSurfaceVariant }}>
+            <Text variant="bodyLarge" style={{ color: theme.dark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.6)' }}>
               No spending data available
             </Text>
-            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginTop: 8 }}>
+            <Text variant="bodySmall" style={{ color: theme.dark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)', marginTop: 8 }}>
               Start adding transactions to see your spending breakdown
             </Text>
           </View>
-        </Card.Content>
-      </Card>
+      </View>
     );
   }
 
   const chartConfig = {
-    backgroundColor: theme.colors.surface,
-    backgroundGradientFrom: theme.colors.surface,
-    backgroundGradientTo: theme.colors.surface,
+    backgroundColor: 'transparent',
+    backgroundGradientFrom: 'transparent',
+    backgroundGradientTo: 'transparent',
     color: (opacity = 1) => theme.dark ? `rgba(255, 255, 255, ${opacity})` : `rgba(0, 0, 0, ${opacity})`,
     labelColor: (opacity = 1) => theme.dark ? `rgba(255, 255, 255, ${opacity})` : `rgba(0, 0, 0, ${opacity})`,
     style: {
@@ -57,9 +55,8 @@ const SpendingPieChart = ({ data = [], title = 'Spending Breakdown' }) => {
   };
 
   return (
-    <Card style={styles.card}>
-      <Card.Content>
-        <Text variant="titleMedium" style={styles.title}>{title}</Text>
+    <View style={styles.card}>
+        {title ? <Text variant="titleMedium" style={[styles.title, { color: theme.dark ? '#fff' : '#1a1a2e' }]}>{title}</Text> : null}
         
         <View style={styles.chartContainer}>
           <PieChart
@@ -79,18 +76,18 @@ const SpendingPieChart = ({ data = [], title = 'Spending Breakdown' }) => {
           {chartData.map((item, index) => {
             const percentage = ((item.amount / total) * 100).toFixed(1);
             return (
-              <View key={index} style={styles.legendItem}>
+              <View key={index} style={[styles.legendItem, { borderBottomColor: theme.dark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
                 <View style={styles.legendRow}>
                   <View style={[styles.colorBox, { backgroundColor: item.color }]} />
-                  <Text variant="bodyMedium" style={styles.legendText}>
+                  <Text variant="bodyMedium" style={[styles.legendText, { color: theme.dark ? '#fff' : '#1a1a2e' }]}>
                     {item.name}
                   </Text>
                 </View>
                 <View style={styles.amountContainer}>
-                  <Text variant="bodyMedium" style={styles.amount}>
+                  <Text variant="bodyMedium" style={[styles.amount, { color: theme.dark ? '#fff' : '#1a1a2e' }]}>
                     ${item.amount.toFixed(2)}
                   </Text>
-                  <Text variant="bodySmall" style={styles.percentage}>
+                  <Text variant="bodySmall" style={[styles.percentage, { color: theme.dark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.6)' }]}>
                     {percentage}%
                   </Text>
                 </View>
@@ -99,14 +96,13 @@ const SpendingPieChart = ({ data = [], title = 'Spending Breakdown' }) => {
           })}
         </ScrollView>
 
-        <View style={styles.totalContainer}>
-          <Text variant="titleSmall" style={styles.totalLabel}>Total Spending:</Text>
+        <View style={[styles.totalContainer, { borderTopColor: theme.dark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)' }]}>
+          <Text variant="titleSmall" style={[styles.totalLabel, { color: theme.dark ? '#fff' : '#1a1a2e' }]}>Total Spending:</Text>
           <Text variant="titleMedium" style={[styles.totalAmount, { color: theme.colors.primary }]}>
             ${total.toFixed(2)}
           </Text>
         </View>
-      </Card.Content>
-    </Card>
+    </View>
   );
 };
 
@@ -114,6 +110,7 @@ const styles = StyleSheet.create({
   card: {
     marginVertical: 8,
     marginHorizontal: 16,
+    backgroundColor: 'transparent',
   },
   title: {
     marginBottom: 16,

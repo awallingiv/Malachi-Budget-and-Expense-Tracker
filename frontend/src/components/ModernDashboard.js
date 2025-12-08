@@ -23,32 +23,66 @@ import { SpendingPieChart } from './charts';
 
 const { width: screenWidth } = Dimensions.get('window');
 
+// Category colors for visual distinction
+const categoryColors = ['#00d4aa', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeaa7', '#ff6b6b', '#a29bfe', '#fd79a8'];
+
+// Background presets - Must be defined before getColors
+const BACKGROUND_PRESETS = {
+  default: {
+    name: 'Default',
+    dark: '#0a0f1a',
+    light: '#f8fafc',
+  },
+  midnight: {
+    name: 'Midnight Blue',
+    dark: '#0d1b2a',
+    light: '#e8f1f8',
+  },
+  charcoal: {
+    name: 'Charcoal',
+    dark: '#1a1a2e',
+    light: '#f5f5f5',
+  },
+  navy: {
+    name: 'Deep Navy',
+    dark: '#0a192f',
+    light: '#e6eef5',
+  },
+  graphite: {
+    name: 'Graphite',
+    dark: '#16161a',
+    light: '#fffffe',
+  },
+};
+
 // Theme-aware color palette
-const getColors = (isDark) => ({
-  background: isDark ? '#0a0f1a' : '#f8fafc',
-  cardBg: isDark ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.02)',
-  cardBorder: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
-  primary: '#00d4aa',
-  secondary: '#ff6b6b',
-  accent: '#4ecdc4',
-  purple: '#667eea',
-  text: isDark ? '#ffffff' : '#1a1a2e',
-  textMuted: isDark ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.6)',
-  textDim: isDark ? 'rgba(255, 255, 255, 0.4)' : 'rgba(0, 0, 0, 0.4)',
-  success: '#00d4aa',
-  warning: '#ffd93d',
-  danger: '#ff6b6b',
-  inputBg: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)',
-  inputBorder: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
-  modalBg: isDark ? '#0a0f1a' : '#ffffff',
-  orbOpacity: isDark ? 0.05 : 0.08,
-});
+const getColors = (isDark, bgPreset = 'default') => {
+  const bg = BACKGROUND_PRESETS[bgPreset] || BACKGROUND_PRESETS.default;
+  const background = isDark ? bg.dark : bg.light;
+  
+  return {
+    background,
+    cardBg: isDark ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.02)',
+    cardBorder: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
+    primary: '#00d4aa',
+    secondary: '#ff6b6b',
+    accent: '#4ecdc4',
+    purple: '#667eea',
+    text: isDark ? '#ffffff' : '#1a1a2e',
+    textMuted: isDark ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.6)',
+    textDim: isDark ? 'rgba(255, 255, 255, 0.4)' : 'rgba(0, 0, 0, 0.4)',
+    success: '#00d4aa',
+    warning: '#ffd93d',
+    danger: '#ff6b6b',
+    inputBg: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)',
+    inputBorder: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+    modalBg: isDark ? bg.dark : '#ffffff',
+    orbOpacity: isDark ? 0.05 : 0.08,
+  };
+};
 
 // Default colors for static styles (dark mode)
 const defaultColors = getColors(true);
-
-// Category colors for visual distinction
-const categoryColors = ['#00d4aa', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeaa7', '#ff6b6b', '#a29bfe', '#fd79a8'];
 
 // Theme presets
 const THEME_PRESETS = {
@@ -61,6 +95,7 @@ const THEME_PRESETS = {
       success: '#00d4aa',
       warning: '#ffd93d',
       danger: '#ff6b6b',
+      cardBorder: 'rgba(0, 212, 170, 0.4)',
     }
   },
   ocean: {
@@ -72,6 +107,7 @@ const THEME_PRESETS = {
       success: '#00E676',
       warning: '#FFB74D',
       danger: '#FF5252',
+      cardBorder: 'rgba(0, 102, 255, 0.4)',
     }
   },
   sunset: {
@@ -83,6 +119,7 @@ const THEME_PRESETS = {
       success: '#6BCB77',
       warning: '#FFE66D',
       danger: '#FF4757',
+      cardBorder: 'rgba(255, 107, 53, 0.4)',
     }
   },
   lavender: {
@@ -94,6 +131,7 @@ const THEME_PRESETS = {
       success: '#00D4AA',
       warning: '#FDCB6E',
       danger: '#E74C3C',
+      cardBorder: 'rgba(155, 89, 182, 0.4)',
     }
   },
   forest: {
@@ -105,6 +143,7 @@ const THEME_PRESETS = {
       success: '#2ECC71',
       warning: '#F39C12',
       danger: '#E74C3C',
+      cardBorder: 'rgba(46, 204, 113, 0.4)',
     }
   },
   midnight: {
@@ -116,6 +155,7 @@ const THEME_PRESETS = {
       success: '#2ED573',
       warning: '#FFA502',
       danger: '#FF4757',
+      cardBorder: 'rgba(83, 82, 237, 0.4)',
     }
   },
 };
@@ -332,8 +372,10 @@ const ModernDashboard = () => {
   
   // Applied theme colors from settings
   const [appliedThemeColors, setAppliedThemeColors] = useState(null);
+  const [selectedBackground, setSelectedBackground] = useState('default');
   
-  const baseColors = getColors(isDark);
+  // Calculate colors - will be updated when selectedBackground changes
+  const baseColors = getColors(isDark, selectedBackground);
   const colors = appliedThemeColors ? { ...baseColors, ...appliedThemeColors } : baseColors;
   const {
     today,
@@ -455,9 +497,11 @@ const ModernDashboard = () => {
       try {
         const savedTheme = await AsyncStorage.getItem('selectedThemePreset');
         const savedVisibility = await AsyncStorage.getItem('widgetVisibility');
+        const savedBackground = await AsyncStorage.getItem('selectedBackground');
         
         if (savedTheme) setSelectedThemePreset(savedTheme);
         if (savedVisibility) setWidgetVisibility(JSON.parse(savedVisibility));
+        if (savedBackground) setSelectedBackground(savedBackground);
       } catch (error) {
         console.error('Failed to load settings:', error);
       }
@@ -480,12 +524,13 @@ const ModernDashboard = () => {
       try {
         await AsyncStorage.setItem('selectedThemePreset', selectedThemePreset);
         await AsyncStorage.setItem('widgetVisibility', JSON.stringify(widgetVisibility));
+        await AsyncStorage.setItem('selectedBackground', selectedBackground);
       } catch (error) {
         console.error('Failed to save settings:', error);
       }
     };
     saveSettings();
-  }, [selectedThemePreset, widgetVisibility]);
+  }, [selectedThemePreset, widgetVisibility, selectedBackground]);
 
   useEffect(() => {
     loadAllData();
@@ -2367,6 +2412,33 @@ const ModernDashboard = () => {
                 </View>
               </View>
 
+              {/* Background Selection */}
+              <View style={[styles.fieldGroup, { marginTop: 16 }]}>
+                <Text style={[styles.modalLabel, { color: colors.text }]}>Background</Text>
+                <View style={styles.themeGrid}>
+                  {Object.entries(BACKGROUND_PRESETS).map(([key, bg]) => (
+                    <TouchableOpacity
+                      key={key}
+                      style={[
+                        styles.themeOption,
+                        { borderColor: colors.cardBorder, backgroundColor: colors.inputBg },
+                        selectedBackground === key && { borderColor: colors.primary, borderWidth: 2 }
+                      ]}
+                      onPress={() => setSelectedBackground(key)}
+                    >
+                      <View style={styles.themeColorRow}>
+                        <View style={[styles.themeColorDot, { backgroundColor: bg.dark, borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' }]} />
+                        <View style={[styles.themeColorDot, { backgroundColor: bg.light, borderWidth: 1, borderColor: 'rgba(0,0,0,0.2)' }]} />
+                      </View>
+                      <Text style={[styles.themeOptionText, { color: colors.text }]}>{bg.name}</Text>
+                      {selectedBackground === key && (
+                        <Text style={{ color: colors.primary, fontSize: 12 }}>✓</Text>
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
               {/* Widget Visibility */}
               <View style={[styles.fieldGroup, { marginTop: 16 }]}>
                 <Text style={[styles.modalLabel, { color: colors.text }]}>Dashboard Widgets</Text>
@@ -3628,13 +3700,16 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 12,
     borderRadius: 16,
-    maxHeight: 200,
+    minHeight: 200,
+    maxHeight: 400,
     overflow: 'hidden',
   },
   incomeWidgetFull: {
     flex: 1,
     padding: 12,
     borderRadius: 16,
+    maxHeight: 450,
+    overflow: 'hidden',
   },
   spendingWidgetTall: {
     flex: 1,
