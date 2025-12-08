@@ -209,16 +209,24 @@ export const budgetService = {
 
   getRecentTransactions: async (userId, limit = 5) => {
     const response = await api.get(`/budget/transactions/${userId}`, {
-      params: { limit }
+      params: { page: 1, limit }
     });
-    return response.data;
+    // Return just the data array for backward compatibility
+    return response.data.data || response.data;
   },
 
   getTransactions: async (userId, params = {}) => {
+    // Support both old and new API response formats
+    // If page/limit are specified, expect paginated response
+    // Otherwise, use default pagination (page 1, limit 50)
     const response = await api.get(`/budget/transactions/${userId}`, {
-      params,
+      params: {
+        page: params.page || 1,
+        limit: params.limit || 50,
+        ...params
+      },
     });
-    return response.data;
+    return response.data; // Returns { data: [...], pagination: {...} }
   },
 
   createTransaction: async (transactionData) => {
@@ -246,11 +254,11 @@ export const budgetService = {
     }
   },
 
-  getIncome: async (userId, startDate, endDate) => {
+  getIncome: async (userId, startDate, endDate, page = 1, limit = 50) => {
     const response = await api.get(`/budget/income/${userId}`, {
-      params: { startDate, endDate }
+      params: { startDate, endDate, page, limit }
     });
-    return response.data;
+    return response.data; // Returns { data: [...], pagination: {...} }
   },
 
   createIncome: async (incomeData) => {
@@ -412,11 +420,35 @@ export const budgetService = {
       params,
     });
     return response.data;
+  },
+
+  // Budget comparison (budgeted vs actual)
+  getBudgetComparison: async (userId, params = {}) => {
+    const response = await api.get(`/budget/comparison/${userId}`, {
+      params,
+    });
+    return response.data;
+  },
+
+  // Income vs expense summary by month
+  getIncomeExpenseSummary: async (userId, params = {}) => {
+    const response = await api.get(`/budget/income-expense-summary/${userId}`, {
+      params,
+    });
+    return response.data;
+  },
+
+  // Copy last month's income to current month
+  copyLastMonthIncome: async (userId) => {
+    const response = await api.post('/budget/income/copy-from-last-month', {
+      userId
+    });
+    return response.data;
   }
 };
 
 export const categoryService = {
-  // Get all table names/categories for a user
+  // Legacy category windows methods (for draggable windows UI)
   getUserTables: async (userId) => {
     console.log('📊 Getting user tables for:', userId);
     const response = await api.get(`/category/tables/${userId}`);
@@ -424,7 +456,6 @@ export const categoryService = {
     return response.data;
   },
 
-  // Get category windows for a user
   getCategoryWindows: async (userId) => {
     console.log('🪟 Getting category windows for:', userId);
     const response = await api.get(`/category/windows/${userId}`);
@@ -432,7 +463,6 @@ export const categoryService = {
     return response.data;
   },
 
-  // Create a new category window
   createCategoryWindow: async (windowData) => {
     console.log('🏗️ Creating category window:', windowData);
     const response = await api.post('/category/windows', windowData);
@@ -440,7 +470,6 @@ export const categoryService = {
     return response.data;
   },
 
-  // Update category window (position, size, etc.)
   updateCategoryWindow: async (windowId, updateData) => {
     console.log('🔄 Updating category window:', windowId, updateData);
     const response = await api.put(`/category/windows/${windowId}`, updateData);
@@ -448,7 +477,6 @@ export const categoryService = {
     return response.data;
   },
 
-  // Delete category window
   deleteCategoryWindow: async (windowId, userId) => {
     console.log('🗑️ Deleting category window:', windowId);
     const response = await api.delete(`/category/windows/${windowId}`, {
@@ -456,6 +484,126 @@ export const categoryService = {
     });
     console.log('🗑️ Window deleted:', response.data);
     return response.data;
+  },
+
+  // New categories API (for groupings/categories structure)
+  getUserCategories: async (userId) => {
+    const response = await api.get(`/categories/${userId}`);
+    return response.data;
+  },
+
+  getCategoriesInGrouping: async (groupingId) => {
+    const response = await api.get(`/categories/grouping/${groupingId}`);
+    return response.data;
+  },
+
+  createCategory: async (categoryData) => {
+    const response = await api.post('/categories', categoryData);
+    return response.data;
+  },
+
+  updateCategory: async (categoryId, updateData) => {
+    const response = await api.put(`/categories/${categoryId}`, updateData);
+    return response.data;
+  },
+
+  deleteCategory: async (categoryId, userId) => {
+    const response = await api.delete(`/categories/${categoryId}`, {
+      data: { userId }
+    });
+    return response.data;
+  }
+};
+
+export const preferencesService = {
+  // Get all user preferences
+  getPreferences: async (userId) => {
+    const response = await api.get(`/preferences/${userId}`);
+    return response.data;
+  },
+
+  // Update user preferences (partial update)
+  updatePreferences: async (userId, preferences) => {
+    const response = await api.put(`/preferences/${userId}`, preferences);
+    return response.data;
+  },
+
+  // Update last expense category
+  updateLastExpenseCategory: async (userId, category) => {
+    const response = await api.put(`/preferences/${userId}/last-expense-category`, {
+      category
+    });
+    return response.data;
+  },
+
+  // Update last income template
+  updateLastIncomeTemplate: async (userId, template) => {
+    const response = await api.put(`/preferences/${userId}/last-income-template`, {
+      template
+    });
+    return response.data;
+  },
+
+  // Update merchant defaults
+  updateMerchantDefaults: async (userId, merchantDefaults) => {
+    const response = await api.put(`/preferences/${userId}/merchant-defaults`, {
+      merchantDefaults
+    });
+    return response.data;
+  },
+
+  // Reset preferences to default
+  resetPreferences: async (userId) => {
+    const response = await api.post(`/preferences/${userId}/reset`);
+    return response.data;
+  }
+};
+
+export const groupingService = {
+  // Get all groupings for user
+  getUserGroupings: async (userId) => {
+    const response = await api.get(`/groupings/${userId}`);
+    return response.data;
+  },
+
+  // Create new grouping
+  createGrouping: async (groupingData) => {
+    const response = await api.post('/groupings', groupingData);
+    return response.data;
+  },
+
+  // Update grouping
+  updateGrouping: async (groupingId, updateData) => {
+    console.log('📤 Sending grouping update:', updateData);
+    const response = await api.put(`/groupings/${groupingId}`, updateData);
+    return response.data;
+  },
+
+  // Delete grouping
+  deleteGrouping: async (groupingId, userId) => {
+    const response = await api.delete(`/groupings/${groupingId}`, {
+      data: { userId }
+    });
+    return response.data;
+  },
+
+  // Get categories within grouping
+  getCategoriesInGrouping: async (userId, groupingId) => {
+    const response = await api.get(`/groupings/${userId}/${groupingId}/categories`);
+    return response.data;
+  },
+
+  // Reorder groupings - updates DisplayOrder for multiple groupings
+  reorderGroupings: async (userId, orderedGroupings) => {
+    // Update each grouping's DisplayOrder
+    const updates = orderedGroupings.map((grouping, index) =>
+      api.put(`/groupings/${grouping.GroupingID}`, {
+        userId,
+        displayOrder: index
+      })
+    );
+    await Promise.all(updates);
+    return orderedGroupings.map((g, i) => ({ ...g, DisplayOrder: i }));
   }
 };
 

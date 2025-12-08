@@ -183,12 +183,6 @@ export default function MobileHomeScreen({ navigation }) {
   // Tithe percentage
   const [tithePercentage, setTithePercentage] = useState(10);
 
-  // Default categories
-  const defaultCategories = [
-    'Groceries', 'Utilities', 'Bills', 'Transportation', 'Entertainment',
-    'Shopping', 'Healthcare', 'Dining', 'Subscriptions', 'Other'
-  ];
-
   useEffect(() => {
     loadAllData();
     loadTithePercentage();
@@ -232,9 +226,8 @@ export default function MobileHomeScreen({ navigation }) {
       setTransactions(txns || []);
       setIncomeList(income || []);
       
-      // Combine user categories with defaults
-      const allCats = [...new Set([...(cats || []), ...defaultCategories])];
-      setCategories(allCats);
+      // Use categories from database (via groupings)
+      setCategories(cats || []);
     } catch (error) {
       console.error('Failed to load dashboard:', error);
     } finally {

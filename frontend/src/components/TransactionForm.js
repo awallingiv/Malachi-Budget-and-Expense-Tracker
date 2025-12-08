@@ -60,18 +60,14 @@ const TransactionForm = ({
   const loadUserCategories = async () => {
     try {
       const userTables = await categoryService.getUserTables(user.UserId);
-      const commonCategories = ['Bills', 'Subscriptions', 'Groceries', 'Entertainment', 'Transportation', 'Healthcare', 'Other'];
       
-      // Combine user's existing categories with common ones
-      const allCategories = [...new Set([...userTables.map(t => t.TableName), ...commonCategories])];
+      // Use categories from database (via groupings)
+      const allCategories = userTables.map(t => t.TableName);
       setCategories(allCategories.map(name => ({ name, displayName: name })));
     } catch (error) {
       console.error('Error loading categories:', error);
-      // Fallback to common categories
-      setCategories([
-        'Bills', 'Subscriptions', 'Groceries', 'Entertainment', 
-        'Transportation', 'Healthcare', 'Other'
-      ].map(name => ({ name, displayName: name })));
+      // Fallback to empty array - user can create categories via groupings
+      setCategories([]);
     }
   };
 
@@ -103,9 +99,9 @@ const TransactionForm = ({
     const newErrors = {};
     
     if (!formData.description.trim()) {
-      newErrors.description = 'Description is required';
+      newErrors.description = 'Name is required';
     } else if (formData.description.length > 150) {
-      newErrors.description = 'Description must be 150 characters or less';
+      newErrors.description = 'Name must be 150 characters or less';
     }
     
     if (!formData.amount || isNaN(parseFloat(formData.amount))) {
@@ -135,7 +131,7 @@ const TransactionForm = ({
         UserID: user.UserId,
         Username: user.Username,
         TableName: formData.tableName,
-        Description: formData.description,
+        Name: formData.description,
         Amount: parseFloat(formData.amount),
         Due: formData.due ? new Date(formData.due).toISOString() : null,
         Date: formData.date ? new Date(formData.date).toISOString() : null,
@@ -206,14 +202,14 @@ const TransactionForm = ({
 
           {/* Form Fields */}
           <View style={styles.form}>
-            {/* Description */}
+            {/* Name */}
             <View style={styles.fieldGroup}>
-              <Text style={styles.label}>Description *</Text>
+              <Text style={styles.label}>Name *</Text>
               <TextInput
                 style={[styles.input, errors.description && styles.inputError]}
                 value={formData.description}
                 onChangeText={(value) => handleFieldChange('description', value)}
-                placeholder="Enter transaction description"
+                placeholder="Enter transaction name"
                 maxLength={150}
                 placeholderTextColor="#666"
               />

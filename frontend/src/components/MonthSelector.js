@@ -293,8 +293,9 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     paddingVertical: 12,
+    paddingHorizontal: 20,
   },
   arrowButton: {
     width: 40,
@@ -311,8 +312,9 @@ const styles = StyleSheet.create({
     fontWeight: '300',
   },
   monthDisplay: {
-    paddingHorizontal: 20,
+    flex: 1,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   monthText: {
     fontSize: 20,

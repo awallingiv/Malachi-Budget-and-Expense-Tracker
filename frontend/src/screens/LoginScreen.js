@@ -38,8 +38,11 @@ export default function LoginScreen({ navigation }) {
   const [isLoading, setIsLoading] = useState(false);
   const [focusedInput, setFocusedInput] = useState(null);
   const [loginInfoMessage, setLoginInfoMessage] = useState('');
+  const [loginError, setLoginError] = useState('');
   const [registerError, setRegisterError] = useState('');
+  const [isNewAccount, setIsNewAccount] = useState(false);
   const [showRegister, setShowRegister] = useState(false);
+  const [showForgotPasswordConfirm, setShowForgotPasswordConfirm] = useState(false);
   const [registerData, setRegisterData] = useState({
     username: '',
     email: '',
@@ -55,6 +58,16 @@ export default function LoginScreen({ navigation }) {
   const logoScale = useRef(new Animated.Value(0.8)).current;
 
   useEffect(() => {
+    // Check for password reset success message
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('passwordReset') === 'true') {
+        setLoginInfoMessage('✅ Password reset successful! You can now log in with your new password.');
+        // Clean up URL
+        window.history.replaceState({}, '', '/');
+      }
+    }
+
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -76,29 +89,39 @@ export default function LoginScreen({ navigation }) {
   }, []);
 
   const handleLogin = async () => {
+    // Clear previous messages
+    setLoginError('');
+    setLoginInfoMessage('');
+
     if (!usernameOrEmail || !password) {
-      Alert.alert('Missing Information', 'Please enter both username/email and password');
+      setLoginError('Please enter both username/email and password.');
       return;
     }
 
     setIsLoading(true);
-    
+
     try {
       const result = await login(usernameOrEmail, password);
       setIsLoading(false);
 
       if (!result.success) {
-        Alert.alert('Login Failed', result.message || 'Invalid credentials');
+        setLoginError(result.message || 'Invalid credentials. Please try again.');
+        // Clear new account state on failed login
+        setIsNewAccount(false);
       }
     } catch (error) {
       setIsLoading(false);
-      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
+      setLoginError('An unexpected error occurred. Please try again.');
     }
   };
 
   const handleForgotPassword = async () => {
+    // Clear previous messages
+    setLoginError('');
+    setLoginInfoMessage('');
+
     if (!usernameOrEmail) {
-      Alert.alert('Missing Information', 'Please enter your username or email first.');
+      setLoginError('Please enter your username or email first.');
       return;
     }
 
@@ -109,16 +132,14 @@ export default function LoginScreen({ navigation }) {
       setIsLoading(false);
 
       if (result.success) {
-        Alert.alert(
-          'Password Reset',
-          'If an account with that username or email exists, a password reset email has been sent.'
-        );
+        setShowForgotPasswordConfirm(true);
+        setLoginInfoMessage('If an account with that username or email exists, a password reset email has been sent. Please check your inbox.');
       } else {
-        Alert.alert('Password Reset Failed', result.message || 'Unable to start password reset.');
+        setLoginError(result.message || 'Unable to start password reset. Please try again.');
       }
     } catch (error) {
       setIsLoading(false);
-      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
+      setLoginError('An unexpected error occurred. Please try again.');
     }
   };
 
@@ -141,10 +162,10 @@ export default function LoginScreen({ navigation }) {
       return;
     }
     
-    if (password.length < 6) {
-      console.log('❌ Validation failed: password too short');
-      setRegisterError('Password must be at least 6 characters.');
-      Alert.alert('Weak Password', 'Password must be at least 6 characters');
+    if (password.length < 8 || password.length > 16) {
+      console.log('❌ Validation failed: password must be 8-16 characters');
+      setRegisterError('Password must be between 8 and 16 characters.');
+      Alert.alert('Invalid Password', 'Password must be between 8 and 16 characters');
       return;
     }
 
@@ -163,6 +184,8 @@ export default function LoginScreen({ navigation }) {
         setUsernameOrEmail(email || username);
         setPassword('');
         setShowRegister(false);
+        setIsNewAccount(true);
+        setLoginError('');
         setLoginInfoMessage('Account created! Please check your email and verify your account, then sign in.');
       } else {
         setRegisterError(result.message || 'Could not create account.');
@@ -194,6 +217,8 @@ export default function LoginScreen({ navigation }) {
         keyboardType={options.keyboardType || 'default'}
         onFocus={() => setFocusedInput(field)}
         onBlur={() => setFocusedInput(null)}
+        onSubmitEditing={options.onSubmitEditing}
+        returnKeyType={options.onSubmitEditing ? 'go' : 'default'}
       />
     </View>
   );
@@ -230,21 +255,82 @@ export default function LoginScreen({ navigation }) {
 
           {/* Card */}
           <View style={styles.card}>
-            {!showRegister ? (
+            {showForgotPasswordConfirm ? (
               <>
-                <Text style={styles.cardTitle}>Welcome Back</Text>
-                <Text style={styles.cardSubtitle}>Sign in to continue</Text>
+                <Text style={styles.cardTitle}>Check Your Email</Text>
+                <Text style={styles.cardSubtitle}>Password reset instructions sent</Text>
+
+                <View style={styles.confirmationBox}>
+                  <Text style={styles.confirmationIcon}>📧</Text>
+                  <Text style={styles.confirmationText}>
+                    If an account with that username or email exists, a password reset email has been sent. 
+                    Please check your inbox and follow the instructions.
+                  </Text>
+                </View>
+
+                <Text style={styles.emailProvidersTitle}>Quick access to your email:</Text>
+                <View style={styles.emailProvidersContainer}>
+                  <TouchableOpacity 
+                    style={styles.emailProviderButton}
+                    onPress={() => {
+                      if (typeof window !== 'undefined') {
+                        window.location.href = 'https://mail.google.com';
+                      }
+                    }}
+                  >
+                    <Text style={styles.emailProviderText}>📬 Gmail</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={styles.emailProviderButton}
+                    onPress={() => {
+                      if (typeof window !== 'undefined') {
+                        window.location.href = 'https://outlook.live.com';
+                      }
+                    }}
+                  >
+                    <Text style={styles.emailProviderText}>📮 Outlook</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={styles.emailProviderButton}
+                    onPress={() => {
+                      if (typeof window !== 'undefined') {
+                        window.location.href = 'https://mail.yahoo.com';
+                      }
+                    }}
+                  >
+                    <Text style={styles.emailProviderText}>📭 Yahoo</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <TouchableOpacity 
+                  style={styles.primaryButton}
+                  onPress={() => {
+                    setShowForgotPasswordConfirm(false);
+                    setUsernameOrEmail('');
+                    setPassword('');
+                    setLoginInfoMessage('');
+                  }}
+                >
+                  <Text style={styles.primaryButtonText}>Back to Sign In</Text>
+                </TouchableOpacity>
+              </>
+            ) : !showRegister ? (
+              <>
+                <Text style={styles.cardTitle}>{isNewAccount ? 'Account Created!' : 'Welcome Back'}</Text>
+                <Text style={styles.cardSubtitle}>{isNewAccount ? 'Verify your email to get started' : 'Sign in to continue'}</Text>
 
                 {loginInfoMessage ? (
                   <Text style={styles.infoText}>{loginInfoMessage}</Text>
                 ) : null}
 
-                {renderInput('Username or Email', usernameOrEmail, setUsernameOrEmail, 'username')}
-                {renderInput('Password', password, setPassword, 'password', { secureTextEntry: true })}
+                {loginError ? (
+                  <Text style={styles.errorText}>{loginError}</Text>
+                ) : null}
 
-                <TouchableOpacity onPress={handleForgotPassword} disabled={isLoading}>
-                  <Text style={styles.linkText}>Forgot password?</Text>
-                </TouchableOpacity>
+                {renderInput('Username or Email', usernameOrEmail, setUsernameOrEmail, 'username', { onSubmitEditing: () => password && handleLogin() })}
+                {renderInput('Password', password, setPassword, 'password', { secureTextEntry: true, onSubmitEditing: handleLogin })}
 
                 <TouchableOpacity 
                   style={[styles.primaryButton, isLoading && styles.buttonDisabled]}
@@ -267,6 +353,18 @@ export default function LoginScreen({ navigation }) {
                   onPress={() => setShowRegister(true)}
                 >
                   <Text style={styles.secondaryButtonText}>Create Account</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  onPress={(e) => {
+                    e?.stopPropagation?.();
+                    handleForgotPassword();
+                  }} 
+                  disabled={isLoading}
+                  activeOpacity={0.7}
+                  style={styles.forgotPasswordButton}
+                >
+                  <Text style={styles.linkText}>Forgot password?</Text>
                 </TouchableOpacity>
               </>
             ) : (
@@ -529,5 +627,55 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 16,
     fontSize: 14,
+  },
+  confirmationBox: {
+    backgroundColor: 'rgba(0, 212, 170, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 212, 170, 0.3)',
+    borderRadius: 12,
+    padding: 20,
+    marginVertical: 20,
+    alignItems: 'center',
+  },
+  confirmationIcon: {
+    fontSize: 48,
+    marginBottom: 12,
+  },
+  confirmationText: {
+    color: colors.text,
+    textAlign: 'center',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  forgotPasswordButton: {
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  emailProvidersTitle: {
+    color: colors.textMuted,
+    fontSize: 13,
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  emailProvidersContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 20,
+    gap: 8,
+  },
+  emailProviderButton: {
+    flex: 1,
+    backgroundColor: colors.inputBg,
+    borderWidth: 1,
+    borderColor: colors.inputBorder,
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+  },
+  emailProviderText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '500',
   },
 });

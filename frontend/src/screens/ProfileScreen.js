@@ -166,8 +166,8 @@ export default function ProfileScreen() {
       return;
     }
     
-    if (passwordForm.newPassword.length < 6) {
-      setError('Password must be at least 6 characters');
+    if (passwordForm.newPassword.length < 8 || passwordForm.newPassword.length > 16) {
+      setError('Password must be between 8 and 16 characters');
       return;
     }
 

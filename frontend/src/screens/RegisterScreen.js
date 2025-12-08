@@ -28,9 +28,9 @@ export default function RegisterScreen({ navigation }) {
       return;
     }
 
-    if (password.length > 16) {
-      console.log('❌ Validation failed: password too long');
-      Alert.alert('Error', 'Password must be 16 characters or less');
+    if (password.length < 8 || password.length > 16) {
+      console.log('❌ Validation failed: password must be 8-16 characters');
+      Alert.alert('Error', 'Password must be between 8 and 16 characters');
       return;
     }
 

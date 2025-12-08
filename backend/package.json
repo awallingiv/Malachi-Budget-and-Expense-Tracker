@@ -8,7 +8,10 @@
     "dev": "nodemon server.js",
     "prod": "cross-env NODE_ENV=production node server.js",
     "prod:win": "set NODE_ENV=production && node server.js",
-    "test": "jest",
+    "test": "jest --coverage --verbose",
+    "test:watch": "jest --watch",
+    "test:auth": "jest __tests__/auth.test.js",
+    "test:budget": "jest __tests__/budget.test.js",
     "build": "echo Backend build complete - no build step needed for Node.js",
     "prestart": "npm run build"
   },

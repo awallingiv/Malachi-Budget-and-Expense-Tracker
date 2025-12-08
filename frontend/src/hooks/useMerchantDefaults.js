@@ -1,40 +1,42 @@
 import { useState, useEffect, useCallback } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
-const makeMerchantKey = (userId) => `merchantDefaults:${userId}`;
+import { preferencesService } from '../services/apiService';
 
 /**
- * Hook to manage per-user merchant → default category mapping
- * and provide simple autocomplete suggestions.
+ * Unified Merchant Defaults Hook - Works for both Web and Mobile
+ * Stores merchant-to-category mappings in backend database
+ * instead of localStorage/AsyncStorage
  */
 export const useMerchantDefaults = (userId) => {
   const [mapping, setMapping] = useState({});
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!userId) return;
+    if (!userId) {
+      setLoading(false);
+      return;
+    }
 
     let isMounted = true;
 
-    const load = async () => {
+    const loadMerchantDefaults = async () => {
       try {
-        const raw = await AsyncStorage.getItem(makeMerchantKey(userId));
+        const preferences = await preferencesService.getPreferences(userId);
+
         if (!isMounted) return;
-        if (raw) {
-          try {
-            const parsed = JSON.parse(raw);
-            setMapping(parsed || {});
-          } catch {
-            setMapping({});
-          }
-        } else {
-          setMapping({});
+
+        if (preferences.MerchantDefaults) {
+          setMapping(preferences.MerchantDefaults);
         }
       } catch (err) {
-        console.warn('Failed to load merchant defaults', err?.message || err);
+        console.warn('Failed to load merchant defaults from API:', err?.message || err);
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
 
-    load();
+    loadMerchantDefaults();
 
     return () => {
       isMounted = false;
@@ -43,12 +45,16 @@ export const useMerchantDefaults = (userId) => {
 
   const persist = useCallback(
     async (next) => {
-      setMapping(next);
       if (!userId) return;
+
+      // Optimistic update
+      setMapping(next);
+
       try {
-        await AsyncStorage.setItem(makeMerchantKey(userId), JSON.stringify(next));
+        await preferencesService.updateMerchantDefaults(userId, next);
       } catch (err) {
-        console.warn('Failed to persist merchant defaults', err?.message || err);
+        console.warn('Failed to persist merchant defaults to API:', err?.message || err);
+        // Could revert the optimistic update here if needed
       }
     },
     [userId]
@@ -58,6 +64,7 @@ export const useMerchantDefaults = (userId) => {
     async (merchantRaw, category) => {
       const merchant = (merchantRaw || '').trim();
       if (!merchant || !category) return;
+
       const current = mapping[merchant] || { category, uses: 0 };
       const next = {
         ...mapping,
@@ -66,6 +73,7 @@ export const useMerchantDefaults = (userId) => {
           uses: current.uses + 1,
         },
       };
+
       await persist(next);
     },
     [mapping, persist]
@@ -102,7 +110,6 @@ export const useMerchantDefaults = (userId) => {
     recordMerchant,
     getDefaultCategory,
     getSuggestions,
+    loading,
   };
 };
-
-
