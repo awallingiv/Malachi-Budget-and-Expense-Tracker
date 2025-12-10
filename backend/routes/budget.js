@@ -2,6 +2,7 @@ const express = require('express');
 const { body, param, query, validationResult } = require('express-validator');
 const { executeStoredProcedure, executeQuery, sql } = require('../config/database');
 const { protect, validateOwnership } = require('../middleware/auth');
+const cache = require('../services/cacheService');
 
 const router = express.Router();
 
@@ -138,6 +139,13 @@ router.get('/dashboard/:userId', async (req, res) => {
 
     console.log('Dashboard request:', { userId, startDate, endDate });
 
+    // Check cache first
+    const cacheKey = cache.generateKey('dashboard', userId, startDate || 'all', endDate || 'all');
+    const cached = await cache.get(cacheKey);
+    if (cached) {
+      return res.json(cached);
+    }
+
     // Try stored procedure first, fallback to queries
     let result;
     try {
@@ -186,6 +194,9 @@ router.get('/dashboard/:userId', async (req, res) => {
         totalAmount: categories.reduce((sum, cat) => sum + (cat.totalAmount || 0), 0)
       }
     };
+
+    // Cache the response
+    await cache.set(cacheKey, stats, cache.TTL.DASHBOARD_STATS);
 
     console.log('Dashboard stats response:', stats);
     res.json(stats);
@@ -1288,6 +1299,9 @@ router.post('/transactions', [
 
     const response = result.recordset[0];
 
+    // Invalidate dashboard cache after creating transaction
+    await cache.invalidatePattern(`dashboard:${UserID}:*`);
+
     res.status(201).json({
       success: true,
       message: 'Transaction created successfully',
@@ -1400,6 +1414,9 @@ router.put('/transactions/:transactionId', [
 
     const response = result.recordset[0];
 
+    // Invalidate dashboard cache after updating transaction
+    await cache.invalidatePattern(`dashboard:${UserID}:*`);
+
     if (response.Success) {
       res.json({
         success: true,
@@ -1471,6 +1488,9 @@ router.delete('/transactions/:transactionId', [
     }
 
     if (response.Success) {
+      // Invalidate dashboard cache after deleting transaction
+      await cache.invalidatePattern(`dashboard:${userId}:*`);
+
       res.json({
         success: true,
         message: response.Message || 'Transaction deleted successfully'
@@ -1636,6 +1656,9 @@ router.post('/income', [
     });
 
     const response = result.recordset[0];
+
+    // Invalidate dashboard cache after creating income
+    await cache.invalidatePattern(`dashboard:${UserID}:*`);
 
     res.status(201).json({
       success: true,
@@ -2073,6 +2096,10 @@ router.put('/income/:incomeId', [
     });
 
     const response = result.recordset[0];
+
+    // Invalidate dashboard cache after updating income
+    await cache.invalidatePattern(`dashboard:${UserID}:*`);
+
     if (response.Success) {
       res.json({
         success: true,
@@ -2138,6 +2165,9 @@ router.delete('/income/:incomeId', [
     }
     
     if (response.Success) {
+      // Invalidate dashboard cache after deleting income
+      await cache.invalidatePattern(`dashboard:${userId}:*`);
+
       res.json({
         success: true,
         message: response.Message || 'Income record deleted successfully'

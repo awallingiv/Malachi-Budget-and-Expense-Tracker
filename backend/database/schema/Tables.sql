@@ -251,6 +251,9 @@ CREATE TABLE [dbo].[UserPreferences](
 	[MerchantDefaults] [nvarchar](max) NULL,
 	[Theme] [varchar](20) NULL,
 	[DefaultCurrency] [varchar](10) NULL,
+	[ThemePreset] [varchar](30) NULL,
+	[BackgroundPreset] [varchar](30) NULL,
+	[WidgetVisibility] [nvarchar](max) NULL,
 	[CreationTime] [datetime] NOT NULL,
 	[LastEdit] [datetime] NOT NULL,
 PRIMARY KEY CLUSTERED 

@@ -947,6 +947,9 @@ BEGIN
         MerchantDefaults,
         Theme,
         DefaultCurrency,
+        ThemePreset,
+        BackgroundPreset,
+        WidgetVisibility,
         CreationTime,
         LastEdit
     FROM UserPreferences
@@ -1847,7 +1850,10 @@ CREATE   PROCEDURE [dbo].[spmb_UpdateUserPreferences]
     @CustomTithePercentage FLOAT = NULL,
     @MerchantDefaults NVARCHAR(MAX) = NULL,
     @Theme VARCHAR(20) = NULL,
-    @DefaultCurrency VARCHAR(10) = NULL
+    @DefaultCurrency VARCHAR(10) = NULL,
+    @ThemePreset VARCHAR(30) = NULL,
+    @BackgroundPreset VARCHAR(30) = NULL,
+    @WidgetVisibility NVARCHAR(MAX) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -1868,6 +1874,9 @@ BEGIN
         MerchantDefaults = ISNULL(@MerchantDefaults, MerchantDefaults),
         Theme = ISNULL(@Theme, Theme),
         DefaultCurrency = ISNULL(@DefaultCurrency, DefaultCurrency),
+        ThemePreset = ISNULL(@ThemePreset, ThemePreset),
+        BackgroundPreset = ISNULL(@BackgroundPreset, BackgroundPreset),
+        WidgetVisibility = ISNULL(@WidgetVisibility, WidgetVisibility),
         LastEdit = GETDATE()
     WHERE UserId = @UserId;
 

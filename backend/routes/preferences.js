@@ -3,6 +3,7 @@ const router = express.Router();
 const { body, param, validationResult } = require('express-validator');
 const { executeQuery } = require('../config/database');
 const { protect } = require('../middleware/auth');
+const cache = require('../services/cacheService');
 
 /**
  * @route   GET /api/preferences/:userId
@@ -26,6 +27,13 @@ router.get('/:userId',
         return res.status(403).json({ message: 'Access denied' });
       }
 
+      // Check cache first
+      const cacheKey = cache.generateKey('preferences', userId);
+      const cached = await cache.get(cacheKey);
+      if (cached) {
+        return res.json(cached);
+      }
+
       const result = await executeQuery(
         'EXEC spmb_GetUserPreferences @UserId',
         { UserId: userId }
@@ -45,8 +53,14 @@ router.get('/:userId',
           : null,
         MerchantDefaults: preferences.MerchantDefaults
           ? JSON.parse(preferences.MerchantDefaults)
-          : {}
+          : {},
+        WidgetVisibility: preferences.WidgetVisibility
+          ? JSON.parse(preferences.WidgetVisibility)
+          : null
       };
+
+      // Cache the response
+      await cache.set(cacheKey, response, cache.TTL.PREFERENCES);
 
       res.json(response);
     } catch (error) {
@@ -70,6 +84,9 @@ router.put('/:userId',
   body('MerchantDefaults').optional().isObject(),
   body('Theme').optional().isString().isLength({ max: 20 }),
   body('DefaultCurrency').optional().isString().isLength({ max: 10 }),
+  body('ThemePreset').optional().isString().isLength({ max: 30 }),
+  body('BackgroundPreset').optional().isString().isLength({ max: 30 }),
+  body('WidgetVisibility').optional().isObject(),
   async (req, res) => {
     try {
       const errors = validationResult(req);
@@ -90,7 +107,10 @@ router.put('/:userId',
         CustomTithePercentage,
         MerchantDefaults,
         Theme,
-        DefaultCurrency
+        DefaultCurrency,
+        ThemePreset,
+        BackgroundPreset,
+        WidgetVisibility
       } = req.body;
 
       const result = await executeQuery(
@@ -101,7 +121,10 @@ router.put('/:userId',
           @CustomTithePercentage,
           @MerchantDefaults,
           @Theme,
-          @DefaultCurrency`,
+          @DefaultCurrency,
+          @ThemePreset,
+          @BackgroundPreset,
+          @WidgetVisibility`,
         {
           UserId: userId,
           LastExpenseCategory: LastExpenseCategory || null,
@@ -109,13 +132,20 @@ router.put('/:userId',
           CustomTithePercentage: CustomTithePercentage || null,
           MerchantDefaults: MerchantDefaults ? JSON.stringify(MerchantDefaults) : null,
           Theme: Theme || null,
-          DefaultCurrency: DefaultCurrency || null
+          DefaultCurrency: DefaultCurrency || null,
+          ThemePreset: ThemePreset || null,
+          BackgroundPreset: BackgroundPreset || null,
+          WidgetVisibility: WidgetVisibility ? JSON.stringify(WidgetVisibility) : null
         }
       );
 
       if (result.recordset.length === 0) {
         return res.status(404).json({ message: 'Failed to update preferences' });
       }
+
+      // Invalidate cache after update
+      const cacheKey = cache.generateKey('preferences', userId);
+      await cache.del(cacheKey);
 
       const preferences = result.recordset[0];
 
@@ -127,7 +157,10 @@ router.put('/:userId',
           : null,
         MerchantDefaults: preferences.MerchantDefaults
           ? JSON.parse(preferences.MerchantDefaults)
-          : {}
+          : {},
+        WidgetVisibility: preferences.WidgetVisibility
+          ? JSON.parse(preferences.WidgetVisibility)
+          : null
       };
 
       res.json(response);

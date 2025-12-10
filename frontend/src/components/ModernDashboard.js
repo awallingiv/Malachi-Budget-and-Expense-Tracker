@@ -17,6 +17,7 @@ import { useTheme } from '../context/ThemeContext';
 import { budgetService, groupingService } from '../services/apiService';
 import { useSmartDefaults } from '../hooks/useSmartDefaults';
 import { useCategoryAutocomplete } from '../hooks/useCategoryAutocomplete';
+import { useDashboardPreferences } from '../hooks/useDashboardPreferences';
 import MonthSelector from './MonthSelector';
 import GroupingCard from './GroupingCard';
 import { SpendingPieChart } from './charts';
@@ -370,13 +371,17 @@ const ModernDashboard = () => {
   const { user, logout } = useAuth();
   const { isDark, toggleTheme } = useTheme();
   
-  // Applied theme colors from settings
-  const [appliedThemeColors, setAppliedThemeColors] = useState(null);
-  const [selectedBackground, setSelectedBackground] = useState('default');
-  
-  // Calculate colors - will be updated when selectedBackground changes
-  const baseColors = getColors(isDark, selectedBackground);
-  const colors = appliedThemeColors ? { ...baseColors, ...appliedThemeColors } : baseColors;
+  // Theme and widget visibility from server-synced preferences hook
+  const {
+    selectedThemePreset,
+    setSelectedThemePreset,
+    selectedBackground,
+    setSelectedBackground,
+    widgetVisibility,
+    setWidgetVisibility,
+    loading: preferencesLoading,
+    themedColors: colors,
+  } = useDashboardPreferences(user?.UserId, isDark);
   const {
     today,
     lastExpenseCategory,
@@ -472,17 +477,6 @@ const ModernDashboard = () => {
 
   // Settings modal state
   const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [selectedThemePreset, setSelectedThemePreset] = useState('default');
-  const [widgetVisibility, setWidgetVisibility] = useState({
-    financialSummary: true,
-    topGroupings: true,
-    categoriesByGroup: true,
-    income: true,
-    spending: true,
-    expenseGroups: true,
-    budgetSummary: true,
-    quickActions: true,
-  });
 
   // Category autocomplete suggestions
   const { suggestions: categorySuggestions } = useCategoryAutocomplete(
@@ -491,46 +485,7 @@ const ModernDashboard = () => {
     categoryInput
   );
 
-  // Load settings from AsyncStorage on mount
-  useEffect(() => {
-    const loadSettings = async () => {
-      try {
-        const savedTheme = await AsyncStorage.getItem('selectedThemePreset');
-        const savedVisibility = await AsyncStorage.getItem('widgetVisibility');
-        const savedBackground = await AsyncStorage.getItem('selectedBackground');
-        
-        if (savedTheme) setSelectedThemePreset(savedTheme);
-        if (savedVisibility) setWidgetVisibility(JSON.parse(savedVisibility));
-        if (savedBackground) setSelectedBackground(savedBackground);
-      } catch (error) {
-        console.error('Failed to load settings:', error);
-      }
-    };
-    loadSettings();
-  }, []);
-
-  // Apply theme preset colors when theme changes
-  useEffect(() => {
-    if (selectedThemePreset && selectedThemePreset !== 'default' && THEME_PRESETS[selectedThemePreset]) {
-      setAppliedThemeColors(THEME_PRESETS[selectedThemePreset].colors);
-    } else {
-      setAppliedThemeColors(null);
-    }
-  }, [selectedThemePreset]);
-
-  // Save settings to AsyncStorage when they change
-  useEffect(() => {
-    const saveSettings = async () => {
-      try {
-        await AsyncStorage.setItem('selectedThemePreset', selectedThemePreset);
-        await AsyncStorage.setItem('widgetVisibility', JSON.stringify(widgetVisibility));
-        await AsyncStorage.setItem('selectedBackground', selectedBackground);
-      } catch (error) {
-        console.error('Failed to save settings:', error);
-      }
-    };
-    saveSettings();
-  }, [selectedThemePreset, widgetVisibility, selectedBackground]);
+  // Theme preferences are now loaded and saved via useDashboardPreferences hook
 
   useEffect(() => {
     loadAllData();

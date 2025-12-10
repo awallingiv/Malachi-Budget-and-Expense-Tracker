@@ -3,6 +3,7 @@ const router = express.Router();
 const { protect } = require('../middleware/auth');
 const { executeStoredProcedure, sql } = require('../config/database');
 const { param, body, validationResult } = require('express-validator');
+const cache = require('../services/cacheService');
 
 // Validation middleware
 const handleValidationErrors = (req, res, next) => {
@@ -31,11 +32,23 @@ router.get('/:userId',
         return res.status(403).json({ success: false, message: 'Access denied' });
       }
 
+      // Check cache first
+      const cacheKey = cache.generateKey('categories', userId);
+      const cached = await cache.get(cacheKey);
+      if (cached) {
+        return res.json(cached);
+      }
+
       const result = await executeStoredProcedure('spmb_GetUserCategories', {
         UserID: { type: sql.UniqueIdentifier, value: userId }
       });
 
-      res.json(result.recordset || []);
+      const categories = result.recordset || [];
+
+      // Cache the response
+      await cache.set(cacheKey, categories, cache.TTL.CATEGORIES);
+
+      res.json(categories);
     } catch (error) {
       console.error('Get categories error:', error);
       res.status(500).json({ success: false, message: 'Server error' });
@@ -99,6 +112,9 @@ router.post('/',
         Icon: { type: sql.VarChar(50), value: icon || null }
       });
 
+      // Invalidate categories cache
+      await cache.del(cache.generateKey('categories', userId));
+
       res.json(result.recordset[0]);
     } catch (error) {
       console.error('Create category error:', error);
@@ -146,6 +162,9 @@ router.put('/:categoryId',
         return res.status(404).json({ success: false, message: 'Category not found' });
       }
 
+      // Invalidate categories cache
+      await cache.del(cache.generateKey('categories', userId));
+
       res.json(result.recordset[0]);
     } catch (error) {
       console.error('Update category error:', error);
@@ -180,6 +199,9 @@ router.delete('/:categoryId',
       if (result.recordset[0].RowsAffected === 0) {
         return res.status(404).json({ success: false, message: 'Category not found' });
       }
+
+      // Invalidate categories cache
+      await cache.del(cache.generateKey('categories', userId));
 
       res.json({
         success: true,

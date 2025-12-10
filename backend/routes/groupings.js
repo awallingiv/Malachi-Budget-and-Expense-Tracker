@@ -3,6 +3,7 @@ const router = express.Router();
 const { protect } = require('../middleware/auth');
 const { executeStoredProcedure, sql } = require('../config/database');
 const { param, body, validationResult } = require('express-validator');
+const cache = require('../services/cacheService');
 
 // Validation middleware
 const handleValidationErrors = (req, res, next) => {
@@ -31,11 +32,23 @@ router.get('/:userId',
         return res.status(403).json({ success: false, message: 'Access denied' });
       }
 
+      // Check cache first
+      const cacheKey = cache.generateKey('groupings', userId);
+      const cached = await cache.get(cacheKey);
+      if (cached) {
+        return res.json(cached);
+      }
+
       const result = await executeStoredProcedure('spmb_GetUserGroupings', {
         UserID: { type: sql.UniqueIdentifier, value: userId }
       });
 
-      res.json(result.recordset || []);
+      const groupings = result.recordset || [];
+
+      // Cache the response
+      await cache.set(cacheKey, groupings, cache.TTL.GROUPINGS);
+
+      res.json(groupings);
     } catch (error) {
       console.error('Get groupings error:', error);
       res.status(500).json({ success: false, message: 'Server error' });
@@ -76,6 +89,9 @@ router.post('/',
           message: 'Failed to create grouping - no result returned'
         });
       }
+
+      // Invalidate groupings cache
+      await cache.del(cache.generateKey('groupings', userId));
 
       res.json(result.recordset[0]);
     } catch (error) {
@@ -122,6 +138,9 @@ router.put('/:groupingId',
         Icon: { type: sql.NVarChar(50), value: icon || null }
       });
 
+      // Invalidate groupings cache
+      await cache.del(cache.generateKey('groupings', userId));
+
       res.json(result.recordset[0]);
     } catch (error) {
       console.error('Update grouping error:', error);
@@ -153,6 +172,9 @@ router.delete('/:groupingId',
         GroupingID: { type: sql.UniqueIdentifier, value: groupingId },
         UserID: { type: sql.UniqueIdentifier, value: userId }
       });
+
+      // Invalidate groupings cache
+      await cache.del(cache.generateKey('groupings', userId));
 
       res.json({ success: true, message: 'Grouping deleted' });
     } catch (error) {
