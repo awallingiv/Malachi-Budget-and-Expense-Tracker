@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import storage from '../utils/storage';
 import { preferencesService } from '../services/apiService';
 
 /**
@@ -197,11 +197,11 @@ export const useDashboardPreferences = (userId, isDark) => {
         }
       }
 
-      // Fallback to AsyncStorage
-      const [savedTheme, savedBackground, savedVisibility] = await Promise.all([
-        AsyncStorage.getItem('selectedThemePreset'),
-        AsyncStorage.getItem('selectedBackground'),
-        AsyncStorage.getItem('widgetVisibility'),
+      // Fallback to storage
+      const [savedTheme, savedBg, savedVisibility] = await Promise.all([
+        storage.getItem('selectedThemePreset'),
+        storage.getItem('selectedBackground'),
+        storage.getItem('widgetVisibility'),
       ]);
 
       if (savedTheme) setSelectedThemePreset(savedTheme);
@@ -221,11 +221,11 @@ export const useDashboardPreferences = (userId, isDark) => {
     try {
       setSaving(true);
 
-      // Save to AsyncStorage immediately
+      // Save to storage immediately
       await Promise.all([
-        AsyncStorage.setItem('selectedThemePreset', themePreset),
-        AsyncStorage.setItem('selectedBackground', bgPreset),
-        AsyncStorage.setItem('widgetVisibility', JSON.stringify(visibility)),
+        storage.setItem('selectedThemePreset', themePreset),
+        storage.setItem('selectedBackground', bgPreset),
+        storage.setItem('widgetVisibility', JSON.stringify(visibility)),
       ]);
 
       // Sync to backend if userId available

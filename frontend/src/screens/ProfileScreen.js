@@ -16,7 +16,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { budgetService } from '../services/apiService';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Ionicons } from '@expo/vector-icons';
+import storage from '../utils/storage';
 
 const TITHE_PERCENTAGE_KEY = '@tithe_percentage';
 
@@ -75,7 +76,7 @@ export default function ProfileScreen() {
 
   const loadTithePercentage = async () => {
     try {
-      const saved = await AsyncStorage.getItem(TITHE_PERCENTAGE_KEY);
+      const saved = await storage.getItem(TITHE_PERCENTAGE_KEY);
       if (saved) {
         const percentage = parseFloat(saved);
         setSettings(prev => ({ ...prev, tithePercentage: percentage }));
@@ -88,7 +89,7 @@ export default function ProfileScreen() {
 
   const saveTithePercentage = async (percentage) => {
     try {
-      await AsyncStorage.setItem(TITHE_PERCENTAGE_KEY, percentage.toString());
+      await storage.setItem(TITHE_PERCENTAGE_KEY, percentage.toString());
       setSettings(prev => ({ ...prev, tithePercentage: percentage }));
       setSuccess('Tithe percentage updated');
       setTimeout(() => setSuccess(null), 3000);

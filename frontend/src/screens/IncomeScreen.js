@@ -19,7 +19,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { budgetService } from '../services/apiService';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Ionicons } from '@expo/vector-icons';
+import storage from '../utils/storage';
 
 const TITHE_PERCENTAGE_KEY = '@tithe_percentage';
 
@@ -78,7 +79,7 @@ export default function IncomeScreen() {
 
   const loadTithePercentage = async () => {
     try {
-      const saved = await AsyncStorage.getItem(TITHE_PERCENTAGE_KEY);
+      const saved = await storage.getItem(TITHE_PERCENTAGE_KEY);
       if (saved) {
         setTithePercentage(parseFloat(saved));
       }

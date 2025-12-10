@@ -1,5 +1,5 @@
 import axios from 'axios';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import storage from '../utils/storage';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
@@ -73,7 +73,7 @@ api.interceptors.request.use(
     // Add auth token if available
     let token;
     try {
-      token = await AsyncStorage.getItem('token');
+      token = await storage.getItem('token');
     } catch (error) {
       // Fallback to localStorage for web
       if (typeof window !== 'undefined' && window.localStorage) {

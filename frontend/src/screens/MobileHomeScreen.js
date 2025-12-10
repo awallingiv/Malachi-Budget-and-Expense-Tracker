@@ -23,7 +23,7 @@ import { budgetService } from '../services/apiService';
 import MobileFAB from '../components/MobileFAB';
 import MonthSelector from '../components/MonthSelector';
 import { TableSection } from '../components/ExpandableCategory';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import storage from '../utils/storage';
 
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -192,7 +192,7 @@ export default function MobileHomeScreen({ navigation }) {
 
   const loadTithePercentage = async () => {
     try {
-      const saved = await AsyncStorage.getItem(TITHE_PERCENTAGE_KEY);
+      const saved = await storage.getItem(TITHE_PERCENTAGE_KEY);
       if (saved) {
         setTithePercentage(parseFloat(saved));
       }
