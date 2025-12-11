@@ -22,7 +22,7 @@ const PORT = process.env.PORT || 3001;
 // Rate limiting
 const limiter = rateLimit({
   windowMs: parseInt(process.env.API_RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
-  max: parseInt(process.env.API_RATE_LIMIT_MAX_REQUESTS) || 1000, // limit each IP to 1000 requests per windowMs (increased for development)
+  max: parseInt(process.env.API_RATE_LIMIT_MAX_REQUESTS) || 300, // limit each IP to 300 requests per windowMs (increased for development)
   message: {
     error: 'Too many requests from this IP, please try again later.'
   }
@@ -140,12 +140,12 @@ async function startServer() {
     await connectDatabase();
     console.log('✅ Database connected successfully');
 
-    app.listen(PORT, () => {
+    app.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📱 Environment: ${process.env.NODE_ENV}`);
-      console.log(`🔗 Health check: http://localhost:${PORT}/health`);
+      console.log(`🔗 Health check: http://0.0.0.0:${PORT}/health`);
       if (process.env.NODE_ENV === 'development') {
-        console.log(`🧪 API Base URL: http://localhost:${PORT}/api`);
+        console.log(`🧪 API Base URL: http://0.0.0.0:${PORT}/api`);
       }
     });
   } catch (error) {
