@@ -1,8 +1,10 @@
-# Use Node.js LTS version
 FROM node:18-alpine
 
 # Set working directory
 WORKDIR /app
+
+#Need this for health check (dont have curl)
+RUN apk add --no-cache curl
 
 # Copy package files
 COPY package*.json ./
@@ -15,11 +17,11 @@ COPY . .
 
 # Create non-root user for security
 RUN addgroup -g 1001 -S nodejs && \
-    adduser -S reactbudget -u 1001
+    adduser -S malachi -u 1001
 
 # Change ownership of the app directory
-RUN chown -R reactbudget:nodejs /app
-USER reactbudget
+RUN chown -R malachi:nodejs /app
+USER malachi
 
 # Expose port
 EXPOSE 3002
