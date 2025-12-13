@@ -380,7 +380,7 @@ const ModernDashboard = () => {
     widgetVisibility,
     setWidgetVisibility,
     loading: preferencesLoading,
-    themedColors: colors,
+    colors,
   } = useDashboardPreferences(user?.UserId, isDark);
   const {
     today,
