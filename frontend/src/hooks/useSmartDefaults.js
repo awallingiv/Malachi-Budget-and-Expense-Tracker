@@ -1,45 +1,47 @@
 import { useState, useEffect, useCallback } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { preferencesService } from '../services/apiService';
 
-const makeKey = (userId, type) => `smartDefaults:${userId}:${type}`;
-
+/**
+ * Unified Smart Defaults Hook - Works for both Web and Mobile
+ * Stores preferences in backend database instead of localStorage/AsyncStorage
+ */
 export const useSmartDefaults = (userId) => {
   const [lastExpenseCategory, setLastExpenseCategory] = useState('');
   const [lastIncomeTemplate, setLastIncomeTemplate] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  // Load persisted values on mount
+  // Load preferences from API on mount
   useEffect(() => {
-    if (!userId) return;
+    if (!userId) {
+      setLoading(false);
+      return;
+    }
 
     let isMounted = true;
 
-    const load = async () => {
+    const loadPreferences = async () => {
       try {
-        const [catRaw, incomeRaw] = await Promise.all([
-          AsyncStorage.getItem(makeKey(userId, 'lastExpenseCategory')),
-          AsyncStorage.getItem(makeKey(userId, 'lastIncomeTemplate')),
-        ]);
+        const preferences = await preferencesService.getPreferences(userId);
 
         if (!isMounted) return;
 
-        if (catRaw) {
-          setLastExpenseCategory(catRaw);
+        if (preferences.LastExpenseCategory) {
+          setLastExpenseCategory(preferences.LastExpenseCategory);
         }
 
-        if (incomeRaw) {
-          try {
-            const parsed = JSON.parse(incomeRaw);
-            setLastIncomeTemplate(parsed);
-          } catch {
-            // ignore parse errors and treat as no template
-          }
+        if (preferences.LastIncomeTemplate) {
+          setLastIncomeTemplate(preferences.LastIncomeTemplate);
         }
       } catch (err) {
-        console.warn('Failed to load smart defaults', err?.message || err);
+        console.warn('Failed to load smart defaults from API:', err?.message || err);
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
 
-    load();
+    loadPreferences();
 
     return () => {
       isMounted = false;
@@ -61,14 +63,15 @@ export const useSmartDefaults = (userId) => {
   const updateLastExpenseCategory = useCallback(
     async (categoryName) => {
       if (!userId || !categoryName) return;
+
+      // Optimistic update
       setLastExpenseCategory(categoryName);
+
       try {
-        await AsyncStorage.setItem(
-          makeKey(userId, 'lastExpenseCategory'),
-          categoryName
-        );
+        await preferencesService.updateLastExpenseCategory(userId, categoryName);
       } catch (err) {
-        console.warn('Failed to persist last expense category', err?.message || err);
+        console.warn('Failed to persist last expense category to API:', err?.message || err);
+        // Could revert the optimistic update here if needed
       }
     },
     [userId]
@@ -77,14 +80,15 @@ export const useSmartDefaults = (userId) => {
   const updateLastIncomeTemplate = useCallback(
     async (template) => {
       if (!userId || !template) return;
+
+      // Optimistic update
       setLastIncomeTemplate(template);
+
       try {
-        await AsyncStorage.setItem(
-          makeKey(userId, 'lastIncomeTemplate'),
-          JSON.stringify(template)
-        );
+        await preferencesService.updateLastIncomeTemplate(userId, template);
       } catch (err) {
-        console.warn('Failed to persist last income template', err?.message || err);
+        console.warn('Failed to persist last income template to API:', err?.message || err);
+        // Could revert the optimistic update here if needed
       }
     },
     [userId]
@@ -97,7 +101,6 @@ export const useSmartDefaults = (userId) => {
     lastIncomeTemplate,
     updateLastIncomeTemplate,
     defaultStatusForDate,
+    loading,
   };
 };
-
-

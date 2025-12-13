@@ -1,36 +1,39 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  View, 
-  FlatList, 
-  StyleSheet, 
-  RefreshControl,
-  Alert,
-  ScrollView
-} from 'react-native';
 import {
+  View,
   Text,
-  Card,
-  FAB,
+  StyleSheet,
+  ScrollView,
+  RefreshControl,
+  FlatList,
+  Alert,
+  TouchableOpacity,
   TextInput,
-  Portal,
   Modal,
-  IconButton,
-  Chip,
-  Searchbar,
-  SegmentedButtons,
-  ProgressBar,
-  Checkbox,
-  Button
-} from 'react-native-paper';
+  KeyboardAvoidingView,
+  Platform,
+  LayoutAnimation,
+  UIManager,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { budgetService } from '../services/apiService';
-import ModernButton from '../components/ModernButton';
-import ModernInput from '../components/ModernInput';
+import { Ionicons } from '@expo/vector-icons';
+import storage from '../utils/storage';
+
+const TITHE_PERCENTAGE_KEY = '@tithe_percentage';
+
+// Enable LayoutAnimation for Android
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 export default function IncomeScreen() {
   const { user } = useAuth();
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
+
   const [income, setIncome] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -38,6 +41,9 @@ export default function IncomeScreen() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedIncome, setSelectedIncome] = useState(null);
   const [error, setError] = useState(null);
+
+  // Filter states
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('date');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -46,15 +52,13 @@ export default function IncomeScreen() {
 
   // New income form state
   const [newIncome, setNewIncome] = useState({
-    Paycheck: '',
-    GrossIncome: '',
-    NetIncome: '',
-    TithePercentage: '10',
-    TitheAmount: '',
-    PaycheckDate: new Date().toISOString().split('T')[0],
-    PaycheckStatus: 'pending',
+    Description: '',
+    Gross: '',
+    Net: '',
+    Tithe: '',
+    Date: new Date().toISOString().split('T')[0],
     TitheStatus: 'unpaid',
-    Notes: ''
+    PaycheckStatus: 'received',
   });
 
   // Stats
@@ -63,30 +67,42 @@ export default function IncomeScreen() {
     totalNet: 0,
     totalTithe: 0,
     unpaidTithe: 0,
-    monthlyAverage: 0
   });
+
+  // Tithe percentage
+  const [tithePercentage, setTithePercentage] = useState(10);
 
   useEffect(() => {
     loadData();
+    loadTithePercentage();
   }, []);
 
-  useEffect(() => {
-    // Auto-calculate tithe amount when gross income or percentage changes
-    if (newIncome.GrossIncome && newIncome.TithePercentage) {
-      const titheAmount = (parseFloat(newIncome.GrossIncome) * parseFloat(newIncome.TithePercentage)) / 100;
-      setNewIncome(prev => ({
-        ...prev,
-        TitheAmount: titheAmount.toFixed(2)
-      }));
+  const loadTithePercentage = async () => {
+    try {
+      const saved = await storage.getItem(TITHE_PERCENTAGE_KEY);
+      if (saved) {
+        setTithePercentage(parseFloat(saved));
+      }
+    } catch (error) {
+      console.error('Failed to load tithe percentage:', error);
     }
-  }, [newIncome.GrossIncome, newIncome.TithePercentage]);
+  };
+
+  // Auto-calculate tithe when gross changes using custom percentage
+  useEffect(() => {
+    if (newIncome.Gross) {
+      const gross = parseFloat(newIncome.Gross) || 0;
+      const tithe = (gross * (tithePercentage / 100)).toFixed(2);
+      setNewIncome(prev => ({ ...prev, Tithe: tithe }));
+    }
+  }, [newIncome.Gross, tithePercentage]);
 
   const loadData = async () => {
     try {
       setError(null);
       const incomeData = await budgetService.getIncome(user.UserId);
-      setIncome(incomeData);
-      calculateStats(incomeData);
+      setIncome(incomeData || []);
+      calculateStats(incomeData || []);
     } catch (err) {
       console.error('Failed to load income:', err);
       setError('Failed to load income data');
@@ -97,22 +113,14 @@ export default function IncomeScreen() {
   };
 
   const calculateStats = (incomeData) => {
-    const totalGross = incomeData.reduce((sum, item) => sum + (parseFloat(item.GrossIncome) || 0), 0);
-    const totalNet = incomeData.reduce((sum, item) => sum + (parseFloat(item.NetIncome) || 0), 0);
-    const totalTithe = incomeData.reduce((sum, item) => sum + (parseFloat(item.TitheAmount) || 0), 0);
+    const totalGross = incomeData.reduce((sum, item) => sum + (parseFloat(item.Gross || item.GrossIncome) || 0), 0);
+    const totalNet = incomeData.reduce((sum, item) => sum + (parseFloat(item.Net || item.NetIncome) || 0), 0);
+    const totalTithe = incomeData.reduce((sum, item) => sum + (parseFloat(item.Tithe || item.TitheAmount) || 0), 0);
     const unpaidTithe = incomeData
       .filter(item => item.TitheStatus !== 'paid')
-      .reduce((sum, item) => sum + (parseFloat(item.TitheAmount) || 0), 0);
-    
-    const monthlyAverage = incomeData.length > 0 ? totalGross / Math.max(incomeData.length, 1) : 0;
+      .reduce((sum, item) => sum + (parseFloat(item.Tithe || item.TitheAmount) || 0), 0);
 
-    setStats({
-      totalGross,
-      totalNet,
-      totalTithe,
-      unpaidTithe,
-      monthlyAverage
-    });
+    setStats({ totalGross, totalNet, totalTithe, unpaidTithe });
   };
 
   const onRefresh = useCallback(() => {
@@ -120,19 +128,28 @@ export default function IncomeScreen() {
     loadData();
   }, []);
 
+  const toggleFilters = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setFiltersExpanded(!filtersExpanded);
+  };
+
   const handleAddIncome = async () => {
+    if (!newIncome.Gross || !newIncome.Net) {
+      Alert.alert('Required', 'Please enter gross and net amounts');
+      return;
+    }
+
     try {
-      // Map frontend fields to backend expected fields
       const incomeData = {
         UserID: user.UserId,
         Username: user.Username,
-        Description: newIncome.Paycheck,
-        Gross: parseFloat(newIncome.GrossIncome) || null,
-        Net: parseFloat(newIncome.NetIncome) || null,
-        Tithe: parseFloat(newIncome.TitheAmount) || null,
-        Date: newIncome.PaycheckDate,
+        Description: newIncome.Description || 'Paycheck',
+        Gross: parseFloat(newIncome.Gross) || 0,
+        Net: parseFloat(newIncome.Net) || 0,
+        Tithe: parseFloat(newIncome.Tithe) || 0,
+        Date: newIncome.Date,
+        TitheStatus: newIncome.TitheStatus,
         PaycheckStatus: newIncome.PaycheckStatus,
-        TitheStatus: newIncome.TitheStatus
       };
 
       const result = await budgetService.createIncome(incomeData);
@@ -144,7 +161,7 @@ export default function IncomeScreen() {
       }
     } catch (error) {
       console.error('Failed to create income:', error);
-      setError('Failed to create income record');
+      Alert.alert('Error', 'Failed to create income record');
     }
   };
 
@@ -162,7 +179,7 @@ export default function IncomeScreen() {
       }
     } catch (error) {
       console.error('Failed to update income:', error);
-      setError('Failed to update income record');
+      Alert.alert('Error', 'Failed to update income record');
     }
   };
 
@@ -177,21 +194,14 @@ export default function IncomeScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              console.log('Deleting income:', incomeId, 'for user:', user.UserId);
               const result = await budgetService.deleteIncome(incomeId, user.UserId);
-              console.log('Delete result:', result);
-              
               if (result && result.success) {
                 loadData();
               } else {
-                const errorMsg = result?.error || result?.message || 'Failed to delete income record';
-                console.error('Delete failed:', errorMsg);
-                Alert.alert('Error', errorMsg);
+                Alert.alert('Error', result?.error || 'Failed to delete income');
               }
             } catch (error) {
-              console.error('Failed to delete income:', error);
-              const errorMsg = error.response?.data?.error || error.response?.data?.message || error.message || 'Failed to delete income record';
-              Alert.alert('Error', errorMsg);
+              Alert.alert('Error', error.message || 'Failed to delete income');
             }
           }
         }
@@ -212,7 +222,7 @@ export default function IncomeScreen() {
 
     Alert.alert(
       'Delete Income Records',
-      `Are you sure you want to delete ${selectedIds.length} income record(s)? This action cannot be undone.`,
+      `Delete ${selectedIds.length} record(s)?`,
       [
         { text: 'Cancel', style: 'cancel' },
         { 
@@ -220,36 +230,16 @@ export default function IncomeScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              // Delete all selected income records in parallel
               const deletePromises = selectedIds.map(id => 
                 budgetService.deleteIncome(id, user.UserId)
               );
-              
-              const results = await Promise.all(deletePromises);
-              
-              // Check if all deletions were successful
-              const allSuccessful = results.every(result => result.success);
-              
-              if (allSuccessful) {
-                // Clear selection and refresh data
-                setSelectedIds([]);
-                setSelectMode(false);
-                loadData();
-              } else {
-                // Some deletions failed
-                const failedCount = results.filter(r => !r.success).length;
-                Alert.alert(
-                  'Partial Success',
-                  `${selectedIds.length - failedCount} income record(s) deleted, but ${failedCount} failed to delete.`
-                );
-                // Still refresh to show updated state
-                setSelectedIds([]);
-                setSelectMode(false);
-                loadData();
-              }
+              await Promise.all(deletePromises);
+              setSelectedIds([]);
+              setSelectMode(false);
+              loadData();
             } catch (error) {
-              console.error('Failed to delete income records:', error);
-              Alert.alert('Error', error.message || 'Failed to delete income records');
+              Alert.alert('Error', 'Failed to delete some records');
+              loadData();
             }
           }
         }
@@ -270,22 +260,19 @@ export default function IncomeScreen() {
         loadData();
       }
     } catch (error) {
-      console.error('Failed to mark tithe as paid:', error);
-      setError('Failed to update tithe status');
+      Alert.alert('Error', 'Failed to update tithe status');
     }
   };
 
   const resetNewIncome = () => {
     setNewIncome({
-      Paycheck: '',
-      GrossIncome: '',
-      NetIncome: '',
-      TithePercentage: '10',
-      TitheAmount: '',
-      PaycheckDate: new Date().toISOString().split('T')[0],
-      PaycheckStatus: 'pending',
+      Description: '',
+      Gross: '',
+      Net: '',
+      Tithe: '',
+      Date: new Date().toISOString().split('T')[0],
       TitheStatus: 'unpaid',
-      Notes: ''
+      PaycheckStatus: 'received',
     });
   };
 
@@ -297,248 +284,224 @@ export default function IncomeScreen() {
   };
 
   const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString();
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
   const filteredIncome = income
     .filter(item => {
-      const matchesSearch = item.Paycheck?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           item.Notes?.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesSearch = !searchQuery ||
+        (item.Description || item.Paycheck || '')?.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesStatus = filterStatus === 'all' || 
-                           (filterStatus === 'tithe-unpaid' && item.TitheStatus !== 'paid') ||
-                           (filterStatus === 'tithe-paid' && item.TitheStatus === 'paid') ||
-                           item.PaycheckStatus === filterStatus;
+        (filterStatus === 'tithe-unpaid' && item.TitheStatus !== 'paid') ||
+        (filterStatus === 'tithe-paid' && item.TitheStatus === 'paid');
       return matchesSearch && matchesStatus;
     })
     .sort((a, b) => {
       switch (sortBy) {
         case 'amount':
-          return (parseFloat(b.GrossIncome) || 0) - (parseFloat(a.GrossIncome) || 0);
+          return (parseFloat(b.Gross || b.GrossIncome) || 0) - (parseFloat(a.Gross || a.GrossIncome) || 0);
         case 'tithe':
-          return (parseFloat(b.TitheAmount) || 0) - (parseFloat(a.TitheAmount) || 0);
+          return (parseFloat(b.Tithe || b.TitheAmount) || 0) - (parseFloat(a.Tithe || a.TitheAmount) || 0);
         case 'date':
         default:
-          return new Date(b.PaycheckDate || 0) - new Date(a.PaycheckDate || 0);
+          return new Date(b.Date || b.PaycheckDate || 0) - new Date(a.Date || a.PaycheckDate || 0);
       }
     });
 
   const renderIncomeItem = ({ item }) => (
-    <Card style={styles.incomeCard}>
-      <Card.Content>
-        <View style={styles.incomeHeader}>
-          {selectMode && (
-            <Checkbox
-              status={selectedIds.includes(item.IncomeId) ? 'checked' : 'unchecked'}
-              onPress={() => toggleSelectIncome(item.IncomeId)}
-            />
-          )}
-          <View style={styles.incomeInfo}>
-            <Text variant="titleMedium" style={styles.paycheckTitle}>
-              {item.Paycheck || 'Paycheck'}
-            </Text>
-            <Text variant="bodySmall" style={styles.incomeDate}>
-              {formatDate(item.PaycheckDate)}
-            </Text>
-            
-            <View style={styles.statusChips}>
-              <Chip 
-                mode="outlined" 
-                compact 
-                style={[
-                  styles.statusChip,
-                  { backgroundColor: item.PaycheckStatus === 'received' ? '#e8f5e8' : '#fff3e0' }
-                ]}
-              >
-                Paycheck: {item.PaycheckStatus}
-              </Chip>
-              <Chip 
-                mode="outlined" 
-                compact 
-                style={[
-                  styles.statusChip,
-                  { backgroundColor: item.TitheStatus === 'paid' ? '#e8f5e8' : '#ffebee' }
-                ]}
-              >
-                Tithe: {item.TitheStatus}
-              </Chip>
-            </View>
-          </View>
-          
-          <View style={styles.incomeActions}>
-            <Text variant="titleLarge" style={styles.grossAmount}>
-              {formatCurrency(item.GrossIncome)}
-            </Text>
-            <Text variant="bodyMedium" style={styles.netAmount}>
-              Net: {formatCurrency(item.NetIncome)}
-            </Text>
-            <Text variant="bodyMedium" style={styles.titheAmount}>
-              Tithe: {formatCurrency(item.TitheAmount)} ({item.TithePercentage}%)
-            </Text>
-            
-            {!selectMode && (
-              <View style={styles.actionButtons}>
-                {item.TitheStatus !== 'paid' && (
-                  <Button 
-                    mode="outlined" 
-                    compact
-                    onPress={() => markTithePaid(item.IncomeId)}
-                    style={styles.titheButton}
-                  >
-                    Mark Tithe Paid
-                  </Button>
-                )}
-                <IconButton
-                  icon="pencil"
-                  size={20}
-                  onPress={() => {
-                    setSelectedIncome(item);
-                    setShowEditModal(true);
-                  }}
-                />
-                <IconButton
-                  icon="delete"
-                  size={20}
-                  iconColor="#f44336"
-                  onPress={() => handleDeleteIncome(item.IncomeId)}
-                />
-              </View>
+    <TouchableOpacity
+      style={[styles.incomeCard, { backgroundColor: theme.card, borderColor: theme.border }]}
+      onPress={() => {
+        if (selectMode) {
+          toggleSelectIncome(item.IncomeId);
+        } else {
+          setSelectedIncome(item);
+          setShowEditModal(true);
+        }
+      }}
+      onLongPress={() => {
+        if (!selectMode) {
+          setSelectMode(true);
+          setSelectedIds([item.IncomeId]);
+        }
+      }}
+    >
+      <View style={styles.incomeRow}>
+        {selectMode && (
+          <View style={[styles.checkbox, selectedIds.includes(item.IncomeId) && { backgroundColor: theme.primary }]}>
+            {selectedIds.includes(item.IncomeId) && (
+              <Text style={styles.checkmark}>✓</Text>
             )}
           </View>
-        </View>
-        
-        {item.Notes && (
-          <Text variant="bodySmall" style={styles.incomeNotes}>
-            {item.Notes}
-          </Text>
         )}
-      </Card.Content>
-    </Card>
+        <View style={[styles.incomeIcon, { backgroundColor: `${theme.secondary}20` }]}>
+          <Text style={styles.incomeIconText}>💵</Text>
+        </View>
+        <View style={styles.incomeInfo}>
+          <Text style={[styles.incomeDesc, { color: theme.text }]} numberOfLines={1}>
+            {item.Description || item.Paycheck || 'Income'}
+          </Text>
+          <Text style={[styles.incomeMeta, { color: theme.textSecondary }]}>
+            {formatDate(item.Date || item.PaycheckDate)} • Tithe: {formatCurrency(item.Tithe || item.TitheAmount)}
+          </Text>
+          {item.TitheStatus !== 'paid' && (
+            <TouchableOpacity
+              style={[styles.titheButton, { borderColor: theme.warning }]}
+              onPress={() => markTithePaid(item.IncomeId)}
+            >
+              <Text style={[styles.titheButtonText, { color: theme.warning }]}>Mark Tithe Paid</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+        <View style={styles.incomeAmounts}>
+          <Text style={[styles.incomeGross, { color: theme.secondary }]}>
+            +{formatCurrency(item.Gross || item.GrossIncome)}
+          </Text>
+          <Text style={[styles.incomeNet, { color: theme.textSecondary }]}>
+            Net: {formatCurrency(item.Net || item.NetIncome)}
+          </Text>
+        </View>
+      </View>
+    </TouchableOpacity>
   );
 
   if (loading) {
     return (
-      <View style={styles.centerContainer}>
-        <Text>Loading income data...</Text>
+      <View style={[styles.loadingContainer, { backgroundColor: theme.background, paddingTop: insets.top }]}>
+        <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Loading income...</Text>
       </View>
     );
   }
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
+      {/* Header */}
+      <View style={[styles.header, { paddingTop: insets.top + 16, backgroundColor: theme.background }]}>
+        <Text style={[styles.headerTitle, { color: theme.text }]}>Income</Text>
+        <Text style={[styles.headerSubtitle, { color: theme.textSecondary }]}>
+          {filteredIncome.length} records • Net: {formatCurrency(stats.totalNet)}
+        </Text>
+      </View>
+
       {/* Stats Cards */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.statsContainer}>
-        <Card style={styles.statCard}>
-          <Card.Content>
-            <Text variant="bodySmall" style={styles.statLabel}>Total Gross</Text>
-            <Text variant="titleLarge" style={styles.statValue}>
-              {formatCurrency(stats.totalGross)}
-            </Text>
-          </Card.Content>
-        </Card>
-        
-        <Card style={styles.statCard}>
-          <Card.Content>
-            <Text variant="bodySmall" style={styles.statLabel}>Total Net</Text>
-            <Text variant="titleLarge" style={styles.statValue}>
-              {formatCurrency(stats.totalNet)}
-            </Text>
-          </Card.Content>
-        </Card>
-        
-        <Card style={styles.statCard}>
-          <Card.Content>
-            <Text variant="bodySmall" style={styles.statLabel}>Total Tithe</Text>
-            <Text variant="titleLarge" style={styles.statValue}>
-              {formatCurrency(stats.totalTithe)}
-            </Text>
-          </Card.Content>
-        </Card>
-        
-        <Card style={styles.statCard}>
-          <Card.Content>
-            <Text variant="bodySmall" style={styles.statLabel}>Unpaid Tithe</Text>
-            <Text variant="titleLarge" style={[styles.statValue, { color: '#f44336' }]}>
-              {formatCurrency(stats.unpaidTithe)}
-            </Text>
-          </Card.Content>
-        </Card>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.statsScroll}>
+        <View style={[styles.statCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Total Gross</Text>
+          <Text style={[styles.statValue, { color: theme.secondary }]}>{formatCurrency(stats.totalGross)}</Text>
+        </View>
+        <View style={[styles.statCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Total Net</Text>
+          <Text style={[styles.statValue, { color: theme.text }]}>{formatCurrency(stats.totalNet)}</Text>
+        </View>
+        <View style={[styles.statCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Tithe Owed</Text>
+          <Text style={[styles.statValue, { color: stats.unpaidTithe > 0 ? theme.warning : theme.secondary }]}>
+            {formatCurrency(stats.unpaidTithe)}
+          </Text>
+        </View>
       </ScrollView>
 
-      {/* Header Controls */}
-      <View style={styles.headerControls}>
-        <View style={styles.topBar}>
-          <Searchbar
-            placeholder="Search income records..."
-            onChangeText={setSearchQuery}
-            value={searchQuery}
-            style={styles.searchbar}
-          />
-          <Button
-            mode={selectMode ? 'contained-tonal' : 'outlined'}
-            onPress={() => {
-              setSelectMode(!selectMode);
-              if (selectMode) {
-                setSelectedIds([]);
-              }
-            }}
+      {/* Search and Filter Bar */}
+      <View style={[styles.searchBar, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+        <View style={styles.searchRow}>
+          <View style={[styles.searchInput, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Text style={styles.searchIcon}>🔍</Text>
+            <TextInput
+              style={[styles.searchText, { color: theme.text }]}
+              placeholder="Search income..."
+              placeholderTextColor={theme.textDisabled}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+          </View>
+          <TouchableOpacity
+            style={[styles.filterButton, filtersExpanded && { backgroundColor: theme.primary }]}
+            onPress={toggleFilters}
           >
-            {selectMode ? 'Cancel select' : 'Select'}
-          </Button>
+            <Text style={[styles.filterIcon, filtersExpanded && { color: theme.textOnPrimary }]}>
+              {filtersExpanded ? '✕' : '⚙️'}
+            </Text>
+          </TouchableOpacity>
+          {!selectMode ? (
+            <TouchableOpacity
+              style={[styles.selectButton, { borderColor: theme.border }]}
+              onPress={() => setSelectMode(true)}
+            >
+              <Text style={[styles.selectText, { color: theme.textSecondary }]}>Select</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[styles.selectButton, { backgroundColor: theme.accent }]}
+              onPress={() => { setSelectMode(false); setSelectedIds([]); }}
+            >
+              <Text style={[styles.selectText, { color: theme.textOnPrimary }]}>Cancel</Text>
+            </TouchableOpacity>
+          )}
         </View>
-        
-        <View style={styles.filterControls}>
-          <SegmentedButtons
-            value={sortBy}
-            onValueChange={setSortBy}
-            buttons={[
-              { value: 'date', label: 'Date' },
-              { value: 'amount', label: 'Amount' },
-              { value: 'tithe', label: 'Tithe' }
-            ]}
-            style={styles.sortButtons}
-          />
-        </View>
-        
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.statusFilter}>
-          <Chip 
-            mode={filterStatus === 'all' ? 'flat' : 'outlined'}
-            onPress={() => setFilterStatus('all')}
-            style={styles.filterChip}
-          >
-            All
-          </Chip>
-          <Chip 
-            mode={filterStatus === 'tithe-unpaid' ? 'flat' : 'outlined'}
-            onPress={() => setFilterStatus('tithe-unpaid')}
-            style={styles.filterChip}
-          >
-            Tithe Due
-          </Chip>
-          <Chip 
-            mode={filterStatus === 'tithe-paid' ? 'flat' : 'outlined'}
-            onPress={() => setFilterStatus('tithe-paid')}
-            style={styles.filterChip}
-          >
-            Tithe Paid
-          </Chip>
-          <Chip 
-            mode={filterStatus === 'received' ? 'flat' : 'outlined'}
-            onPress={() => setFilterStatus('received')}
-            style={styles.filterChip}
-          >
-            Received
-          </Chip>
+
+        {/* Expandable Filters */}
+        {filtersExpanded && (
+          <View style={styles.filtersPanel}>
+            <Text style={[styles.filterLabel, { color: theme.textSecondary }]}>Sort by</Text>
+            <View style={styles.sortRow}>
+              {['date', 'amount', 'tithe'].map((sort) => (
+                <TouchableOpacity
+                  key={sort}
+                  style={[
+                    styles.sortChip,
+                    { borderColor: theme.border },
+                    sortBy === sort && { backgroundColor: theme.primary, borderColor: theme.primary }
+                  ]}
+                  onPress={() => setSortBy(sort)}
+                >
+                  <Text style={[
+                    styles.sortChipText,
+                    { color: theme.textSecondary },
+                    sortBy === sort && { color: theme.textOnPrimary }
+                  ]}>
+                    {sort.charAt(0).toUpperCase() + sort.slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* Status filter chips */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.statusScroll}>
+          {[
+            { key: 'all', label: 'All' },
+            { key: 'tithe-unpaid', label: 'Tithe Due' },
+            { key: 'tithe-paid', label: 'Tithe Paid' },
+          ].map((status) => (
+            <TouchableOpacity
+              key={status.key}
+              style={[
+                styles.statusChip,
+                { borderColor: theme.border },
+                filterStatus === status.key && { backgroundColor: theme.primary, borderColor: theme.primary }
+              ]}
+              onPress={() => setFilterStatus(status.key)}
+            >
+              <Text style={[
+                styles.statusChipText,
+                { color: theme.textSecondary },
+                filterStatus === status.key && { color: theme.textOnPrimary }
+              ]}>{status.label}</Text>
+            </TouchableOpacity>
+          ))}
         </ScrollView>
       </View>
 
       {error && (
-        <Card style={styles.errorCard}>
-          <Card.Content>
-            <Text style={styles.errorText}>{error}</Text>
-            <Button onPress={loadData} mode="outlined">Retry</Button>
-          </Card.Content>
-        </Card>
+        <View style={[styles.errorBanner, { backgroundColor: `${theme.error}20` }]}>
+          <Text style={[styles.errorText, { color: theme.error }]}>{error}</Text>
+          <TouchableOpacity onPress={loadData}>
+            <Text style={[styles.retryText, { color: theme.primary }]}>Retry</Text>
+          </TouchableOpacity>
+        </View>
       )}
 
       {/* Income List */}
@@ -546,204 +509,194 @@ export default function IncomeScreen() {
         data={filteredIncome}
         renderItem={renderIncomeItem}
         keyExtractor={item => item.IncomeId}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />
+        }
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={() => (
-          <Card style={styles.emptyCard}>
-            <Card.Content>
-              <Text style={styles.emptyText}>No income records found</Text>
-              <Text variant="bodySmall">Add your first paycheck to get started</Text>
-            </Card.Content>
-          </Card>
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyIcon}>💰</Text>
+            <Text style={[styles.emptyText, { color: theme.text }]}>No income records</Text>
+            <Text style={[styles.emptySubtext, { color: theme.textSecondary }]}>
+              Tap + to add your first paycheck
+            </Text>
+          </View>
         )}
       />
 
       {/* Bulk actions bar */}
       {selectMode && selectedIds.length > 0 && (
-        <View style={styles.bulkActionsBar}>
-          <Text style={styles.bulkActionsText}>{selectedIds.length} selected</Text>
-          <Button
-            mode="outlined"
+        <View style={[styles.bulkBar, { backgroundColor: theme.surface, borderTopColor: theme.border }]}>
+          <Text style={[styles.bulkText, { color: theme.text }]}>{selectedIds.length} selected</Text>
+          <TouchableOpacity
+            style={[styles.bulkDeleteButton, { backgroundColor: theme.error }]}
             onPress={handleBulkDelete}
-            textColor="#f44336"
           >
-            Delete selected
-          </Button>
+            <Text style={styles.bulkDeleteText}>Delete</Text>
+          </TouchableOpacity>
         </View>
       )}
 
-      {/* Add Income FAB */}
+      {/* FAB */}
       {!selectMode && (
-        <FAB
-          icon="plus"
-          style={styles.fab}
-          onPress={() => setShowAddModal(true)}
-        />
+        <TouchableOpacity
+          style={[styles.fab, { backgroundColor: theme.secondary, bottom: 90 + insets.bottom }]}
+          onPress={() => { resetNewIncome(); setShowAddModal(true); }}
+        >
+          <Text style={[styles.fabIcon, { color: theme.textOnSecondary }]}>+</Text>
+        </TouchableOpacity>
       )}
 
       {/* Add Income Modal */}
-      <Portal>
-        <Modal
-          visible={showAddModal}
-          onDismiss={() => setShowAddModal(false)}
-          contentContainerStyle={styles.modalContent}
+      <Modal visible={showAddModal} transparent animationType="slide">
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
         >
-          <Card>
-            <Card.Content>
-              <View style={styles.modalHeader}>
-                <Text variant="titleLarge">Add New Income</Text>
-                <IconButton icon="close" onPress={() => setShowAddModal(false)} />
-              </View>
+          <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Add Income</Text>
+              <TouchableOpacity onPress={() => setShowAddModal(false)}>
+                <Text style={[styles.modalClose, { color: theme.textSecondary }]}>✕</Text>
+              </TouchableOpacity>
+            </View>
 
+            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+              <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Description</Text>
               <TextInput
-                label="Paycheck Description"
-                value={newIncome.Paycheck}
-                onChangeText={(text) => setNewIncome(prev => ({ ...prev, Paycheck: text }))}
-                style={styles.input}
-                placeholder="e.g., Regular Paycheck, Bonus"
+                style={[styles.modalInput, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.text }]}
+                placeholder="e.g., Paycheck, Bonus"
+                placeholderTextColor={theme.textDisabled}
+                value={newIncome.Description}
+                onChangeText={(text) => setNewIncome(prev => ({ ...prev, Description: text }))}
               />
 
-              <View style={styles.rowInputs}>
-                <TextInput
-                  label="Gross Income"
-                  value={newIncome.GrossIncome}
-                  onChangeText={(text) => setNewIncome(prev => ({ ...prev, GrossIncome: text }))}
-                  keyboardType="decimal-pad"
-                  style={[styles.input, styles.halfWidth]}
-                  placeholder="0.00"
-                />
-
-                <TextInput
-                  label="Net Income"
-                  value={newIncome.NetIncome}
-                  onChangeText={(text) => setNewIncome(prev => ({ ...prev, NetIncome: text }))}
-                  keyboardType="decimal-pad"
-                  style={[styles.input, styles.halfWidth]}
-                  placeholder="0.00"
-                />
-              </View>
-
-              <View style={styles.rowInputs}>
-                <TextInput
-                  label="Tithe %"
-                  value={newIncome.TithePercentage}
-                  onChangeText={(text) => setNewIncome(prev => ({ ...prev, TithePercentage: text }))}
-                  keyboardType="decimal-pad"
-                  style={[styles.input, styles.halfWidth]}
-                  placeholder="10"
-                />
-
-                <TextInput
-                  label="Tithe Amount"
-                  value={newIncome.TitheAmount}
-                  onChangeText={(text) => setNewIncome(prev => ({ ...prev, TitheAmount: text }))}
-                  keyboardType="decimal-pad"
-                  style={[styles.input, styles.halfWidth]}
-                  placeholder="Auto-calculated"
-                />
-              </View>
-
+              <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Gross Amount</Text>
               <TextInput
-                label="Paycheck Date"
-                value={newIncome.PaycheckDate}
-                onChangeText={(text) => setNewIncome(prev => ({ ...prev, PaycheckDate: text }))}
-                style={styles.input}
+                style={[styles.modalInput, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.text }]}
+                placeholder="0.00"
+                placeholderTextColor={theme.textDisabled}
+                value={newIncome.Gross}
+                onChangeText={(text) => setNewIncome(prev => ({ ...prev, Gross: text }))}
+                keyboardType="decimal-pad"
+              />
+
+              <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Net Amount</Text>
+              <TextInput
+                style={[styles.modalInput, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.text }]}
+                placeholder="0.00"
+                placeholderTextColor={theme.textDisabled}
+                value={newIncome.Net}
+                onChangeText={(text) => setNewIncome(prev => ({ ...prev, Net: text }))}
+                keyboardType="decimal-pad"
+              />
+
+              <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Tithe ({tithePercentage}% auto-calculated)</Text>
+              <TextInput
+                style={[styles.modalInput, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.text }]}
+                placeholder="Auto-calculated"
+                placeholderTextColor={theme.textDisabled}
+                value={newIncome.Tithe}
+                onChangeText={(text) => setNewIncome(prev => ({ ...prev, Tithe: text }))}
+                keyboardType="decimal-pad"
+              />
+
+              <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Date</Text>
+              <TextInput
+                style={[styles.modalInput, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.text }]}
                 placeholder="YYYY-MM-DD"
+                placeholderTextColor={theme.textDisabled}
+                value={newIncome.Date}
+                onChangeText={(text) => setNewIncome(prev => ({ ...prev, Date: text }))}
               />
+            </ScrollView>
 
-              <TextInput
-                label="Notes (Optional)"
-                value={newIncome.Notes}
-                onChangeText={(text) => setNewIncome(prev => ({ ...prev, Notes: text }))}
-                style={styles.input}
-                multiline
-                numberOfLines={3}
-              />
-
-              <View style={styles.modalButtons}>
-                <ModernButton
-                  title="Cancel"
-                  variant="outline"
-                  onPress={() => setShowAddModal(false)}
-                  style={{ flex: 1, marginRight: 8 }}
-                />
-                <ModernButton
-                  title="Add Income"
-                  variant="primary"
-                  onPress={handleAddIncome}
-                  disabled={!newIncome.Paycheck || !newIncome.GrossIncome}
-                  icon="plus"
-                  style={{ flex: 1, marginLeft: 8 }}
-                />
-              </View>
-            </Card.Content>
-          </Card>
-        </Modal>
-      </Portal>
+            <View style={[styles.modalFooter, { borderTopColor: theme.border }]}>
+              <TouchableOpacity
+                style={[styles.modalCancelButton, { borderColor: theme.border }]}
+                onPress={() => setShowAddModal(false)}
+              >
+                <Text style={[styles.modalCancelText, { color: theme.textSecondary }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalSaveButton, { backgroundColor: theme.secondary }]}
+                onPress={handleAddIncome}
+              >
+                <Text style={[styles.modalSaveText, { color: theme.textOnSecondary }]}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
 
       {/* Edit Income Modal */}
-      <Portal>
-        <Modal
-          visible={showEditModal}
-          onDismiss={() => setShowEditModal(false)}
-          contentContainerStyle={styles.modalContent}
+      <Modal visible={showEditModal} transparent animationType="slide">
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
         >
-          <Card>
-            <Card.Content>
-              <View style={styles.modalHeader}>
-                <Text variant="titleLarge">Edit Income</Text>
-                <IconButton icon="close" onPress={() => setShowEditModal(false)} />
-              </View>
+          <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Edit Income</Text>
+              <TouchableOpacity onPress={() => setShowEditModal(false)}>
+                <Text style={[styles.modalClose, { color: theme.textSecondary }]}>✕</Text>
+              </TouchableOpacity>
+            </View>
 
-              {selectedIncome && (
-                <>
-                  <TextInput
-                    label="Paycheck Description"
-                    value={selectedIncome.Paycheck || ''}
-                    onChangeText={(text) => setSelectedIncome(prev => ({ ...prev, Paycheck: text }))}
-                    style={styles.input}
-                  />
+            {selectedIncome && (
+              <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+                <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Description</Text>
+                <TextInput
+                  style={[styles.modalInput, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.text }]}
+                  value={selectedIncome.Description || selectedIncome.Paycheck || ''}
+                  onChangeText={(text) => setSelectedIncome(prev => ({ ...prev, Description: text }))}
+                />
 
-                  <View style={styles.rowInputs}>
-                    <TextInput
-                      label="Gross Income"
-                      value={selectedIncome.GrossIncome?.toString() || ''}
-                      onChangeText={(text) => setSelectedIncome(prev => ({ ...prev, GrossIncome: parseFloat(text) || 0 }))}
-                      keyboardType="decimal-pad"
-                      style={[styles.input, styles.halfWidth]}
-                    />
+                <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Gross Amount</Text>
+                <TextInput
+                  style={[styles.modalInput, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.text }]}
+                  value={(selectedIncome.Gross || selectedIncome.GrossIncome)?.toString() || ''}
+                  onChangeText={(text) => setSelectedIncome(prev => ({ ...prev, Gross: parseFloat(text) || 0 }))}
+                  keyboardType="decimal-pad"
+                />
 
-                    <TextInput
-                      label="Net Income"
-                      value={selectedIncome.NetIncome?.toString() || ''}
-                      onChangeText={(text) => setSelectedIncome(prev => ({ ...prev, NetIncome: parseFloat(text) || 0 }))}
-                      keyboardType="decimal-pad"
-                      style={[styles.input, styles.halfWidth]}
-                    />
-                  </View>
+                <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Net Amount</Text>
+                <TextInput
+                  style={[styles.modalInput, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.text }]}
+                  value={(selectedIncome.Net || selectedIncome.NetIncome)?.toString() || ''}
+                  onChangeText={(text) => setSelectedIncome(prev => ({ ...prev, Net: parseFloat(text) || 0 }))}
+                  keyboardType="decimal-pad"
+                />
 
-                  <TextInput
-                    label="Notes"
-                    value={selectedIncome.Notes || ''}
-                    onChangeText={(text) => setSelectedIncome(prev => ({ ...prev, Notes: text }))}
-                    style={styles.input}
-                    multiline
-                  />
+                <TouchableOpacity
+                  style={[styles.deleteButton, { borderColor: theme.error }]}
+                  onPress={() => {
+                    setShowEditModal(false);
+                    handleDeleteIncome(selectedIncome.IncomeId);
+                  }}
+                >
+                  <Text style={[styles.deleteButtonText, { color: theme.error }]}>Delete Income</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            )}
 
-                  <View style={styles.modalButtons}>
-                    <Button mode="outlined" onPress={() => setShowEditModal(false)}>
-                      Cancel
-                    </Button>
-                    <Button mode="contained" onPress={handleEditIncome}>
-                      Update
-                    </Button>
-                  </View>
-                </>
-              )}
-            </Card.Content>
-          </Card>
-        </Modal>
-      </Portal>
+            <View style={[styles.modalFooter, { borderTopColor: theme.border }]}>
+              <TouchableOpacity
+                style={[styles.modalCancelButton, { borderColor: theme.border }]}
+                onPress={() => setShowEditModal(false)}
+              >
+                <Text style={[styles.modalCancelText, { color: theme.textSecondary }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalSaveButton, { backgroundColor: theme.secondary }]}
+                onPress={handleEditIncome}
+              >
+                <Text style={[styles.modalSaveText, { color: theme.textOnSecondary }]}>Update</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -751,187 +704,357 @@ export default function IncomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
   },
-  centerContainer: {
+  loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
   },
-  statsContainer: {
-    padding: 16,
-    paddingBottom: 8,
+  loadingText: {
+    fontSize: 16,
+  },
+  header: {
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: '700',
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    marginTop: 4,
+  },
+  statsScroll: {
+    paddingHorizontal: 16,
+    marginBottom: 12,
   },
   statCard: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderRadius: 12,
+    borderWidth: 1,
     marginRight: 12,
     minWidth: 120,
-    elevation: 2,
   },
   statLabel: {
-    color: '#666',
+    fontSize: 12,
     marginBottom: 4,
   },
   statValue: {
-    fontWeight: 'bold',
-    color: '#2e7d32',
+    fontSize: 18,
+    fontWeight: '700',
   },
-  headerControls: {
-    backgroundColor: 'white',
+  searchBar: {
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
   },
-  topBar: {
+  searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
+    gap: 10,
   },
-  searchbar: {
+  searchInput: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    height: 44,
   },
-  filterControls: {
-    marginBottom: 12,
-  },
-  sortButtons: {
-    marginBottom: 8,
-  },
-  statusFilter: {
-    maxHeight: 50,
-  },
-  filterChip: {
+  searchIcon: {
     marginRight: 8,
   },
-  errorCard: {
-    margin: 16,
-    backgroundColor: '#ffebee',
+  searchText: {
+    flex: 1,
+    fontSize: 16,
+  },
+  filterButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  filterIcon: {
+    fontSize: 18,
+  },
+  selectButton: {
+    paddingHorizontal: 12,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    justifyContent: 'center',
+  },
+  selectText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  filtersPanel: {
+    marginTop: 16,
+  },
+  filterLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  sortRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  sortChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  sortChipText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  statusScroll: {
+    marginTop: 12,
+  },
+  statusChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    marginRight: 8,
+  },
+  statusChipText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    marginHorizontal: 16,
+    borderRadius: 8,
+    marginTop: 8,
   },
   errorText: {
-    color: '#c62828',
-    marginBottom: 8,
+    fontSize: 14,
+  },
+  retryText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   listContent: {
     padding: 16,
-    paddingBottom: 100,
+    paddingBottom: 150,
   },
   incomeCard: {
-    marginBottom: 12,
-    elevation: 2,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 10,
+    borderWidth: 1,
   },
-  incomeHeader: {
+  incomeRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#ccc',
+    marginRight: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkmark: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  incomeIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  incomeIconText: {
+    fontSize: 20,
   },
   incomeInfo: {
     flex: 1,
     marginRight: 12,
   },
-  paycheckTitle: {
-    marginBottom: 4,
-    fontWeight: '600',
-  },
-  incomeDate: {
-    color: '#666',
-    marginBottom: 8,
-  },
-  statusChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  statusChip: {
-    marginRight: 4,
+  incomeDesc: {
+    fontSize: 16,
+    fontWeight: '500',
     marginBottom: 4,
   },
-  incomeActions: {
-    alignItems: 'flex-end',
-  },
-  grossAmount: {
-    fontWeight: 'bold',
-    color: '#2e7d32',
-    marginBottom: 2,
-  },
-  netAmount: {
-    color: '#666',
-    marginBottom: 2,
-  },
-  titheAmount: {
-    color: '#ff9800',
-    marginBottom: 8,
-  },
-  actionButtons: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
+  incomeMeta: {
+    fontSize: 13,
   },
   titheButton: {
-    marginRight: 8,
-  },
-  incomeNotes: {
-    fontStyle: 'italic',
-    color: '#666',
     marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    alignSelf: 'flex-start',
   },
-  emptyCard: {
-    marginTop: 50,
+  titheButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  incomeAmounts: {
+    alignItems: 'flex-end',
+  },
+  incomeGross: {
+    fontSize: 17,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  incomeNet: {
+    fontSize: 13,
+  },
+  emptyContainer: {
     alignItems: 'center',
+    paddingVertical: 60,
+  },
+  emptyIcon: {
+    fontSize: 48,
+    marginBottom: 16,
   },
   emptyText: {
-    textAlign: 'center',
-    marginBottom: 8,
     fontSize: 18,
-    fontWeight: '500',
+    fontWeight: '600',
+    marginBottom: 8,
   },
-  bulkActionsBar: {
+  emptySubtext: {
+    fontSize: 14,
+  },
+  bulkBar: {
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: 0,
-    padding: 12,
-    backgroundColor: '#ffffff',
-    borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
+    bottom: 70,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    padding: 16,
+    borderTopWidth: 1,
   },
-  bulkActionsText: {
-    fontSize: 14,
-    color: '#333',
+  bulkText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  bulkDeleteButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  bulkDeleteText: {
+    color: '#fff',
+    fontWeight: '600',
   },
   fab: {
     position: 'absolute',
-    margin: 16,
-    right: 0,
-    bottom: 0,
+    right: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  fabIcon: {
+    fontSize: 28,
+    fontWeight: '300',
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: 'transparent',
-    padding: 20,
-    margin: 20,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '90%',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    padding: 20,
+    borderBottomWidth: 1,
   },
-  input: {
-    marginBottom: 12,
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
   },
-  rowInputs: {
+  modalClose: {
+    fontSize: 24,
+    padding: 4,
+  },
+  modalBody: {
+    padding: 20,
+    maxHeight: 400,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 8,
+    marginTop: 12,
+  },
+  modalInput: {
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+  },
+  deleteButton: {
+    marginTop: 24,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  deleteButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  modalFooter: {
     flexDirection: 'row',
+    padding: 20,
     gap: 12,
+    borderTopWidth: 1,
   },
-  halfWidth: {
+  modalCancelButton: {
     flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
   },
-  modalButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 20,
-    gap: 12,
+  modalCancelText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  modalSaveButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  modalSaveText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

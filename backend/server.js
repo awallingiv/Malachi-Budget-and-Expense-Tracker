@@ -10,6 +10,9 @@ const authRoutes = require('./routes/auth');
 const budgetRoutes = require('./routes/budget');
 const userRoutes = require('./routes/user');
 const categoryWindowRoutes = require('./routes/categoryWindows');
+const preferencesRoutes = require('./routes/preferences');
+const groupingsRoutes = require('./routes/groupings');
+const categoriesRoutes = require('./routes/categories');
 const { connectDatabase, testConnection } = require('./config/database');
 const { errorHandler, notFound } = require('./middleware/errorHandler');
 
@@ -19,7 +22,7 @@ const PORT = process.env.PORT || 3001;
 // Rate limiting
 const limiter = rateLimit({
   windowMs: parseInt(process.env.API_RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
-  max: parseInt(process.env.API_RATE_LIMIT_MAX_REQUESTS) || 100, // limit each IP to 100 requests per windowMs
+  max: parseInt(process.env.API_RATE_LIMIT_MAX_REQUESTS) || 300, // limit each IP to 300 requests per windowMs (increased for development)
   message: {
     error: 'Too many requests from this IP, please try again later.'
   }
@@ -108,6 +111,9 @@ app.use('/api/auth', authRoutes);
 app.use('/api/budget', budgetRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/category', categoryWindowRoutes);
+app.use('/api/preferences', preferencesRoutes);
+app.use('/api/groupings', groupingsRoutes);
+app.use('/api/categories', categoriesRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -134,12 +140,12 @@ async function startServer() {
     await connectDatabase();
     console.log('✅ Database connected successfully');
 
-    app.listen(PORT, () => {
+    app.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📱 Environment: ${process.env.NODE_ENV}`);
-      console.log(`🔗 Health check: http://localhost:${PORT}/health`);
+      console.log(`🔗 Health check: http://0.0.0.0:${PORT}/health`);
       if (process.env.NODE_ENV === 'development') {
-        console.log(`🧪 API Base URL: http://localhost:${PORT}/api`);
+        console.log(`🧪 API Base URL: http://0.0.0.0:${PORT}/api`);
       }
     });
   } catch (error) {
@@ -159,4 +165,10 @@ process.on('SIGINT', () => {
   process.exit(0);
 });
 
-startServer();
+// Only start server if not in test environment
+if (process.env.NODE_ENV !== 'test') {
+  startServer();
+}
+
+// Export app for testing
+module.exports = app;

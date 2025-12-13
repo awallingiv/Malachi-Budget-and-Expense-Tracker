@@ -1,9 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
-import { Text, Card, Chip } from 'react-native-paper';
+import { Text, Card, Chip, SegmentedButtons } from 'react-native-paper';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { budgetService } from '../services/apiService';
+import { 
+  SpendingPieChart, 
+  TrendLineChart, 
+  BudgetBarChart, 
+  IncomeVsExpenseChart 
+} from '../components/charts';
 
 const computeMonthRange = (offsetMonths = 0) => {
   const now = new Date();
@@ -22,7 +28,10 @@ export default function InsightsScreen() {
   const { theme } = useTheme();
 
   const [rangeMode, setRangeMode] = useState('this'); // 'this' | 'last'
+  const [chartView, setChartView] = useState('pie'); // 'pie' | 'trend' | 'budget' | 'income'
   const [summary, setSummary] = useState([]);
+  const [budgetData, setBudgetData] = useState([]);
+  const [incomeExpenseData, setIncomeExpenseData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -33,6 +42,8 @@ export default function InsightsScreen() {
 
   useEffect(() => {
     loadSummary();
+    loadBudgetData();
+    loadIncomeExpenseData();
   }, [rangeMode]);
 
   const loadSummary = async () => {
@@ -55,6 +66,56 @@ export default function InsightsScreen() {
       setError('Failed to load category summary');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadBudgetData = async () => {
+    if (!user?.UserId) return;
+    try {
+      const { start, end } =
+        rangeMode === 'this' ? computeMonthRange(0) : computeMonthRange(-1);
+
+      // Get budget vs actual from backend using new endpoint
+      const data = await budgetService.getBudgetComparison(user.UserId, {
+        startDate: start,
+        endDate: end,
+      });
+
+      // Transform to chart format
+      const budgetFormatted = data.map(item => ({
+        category: item.Category,
+        actualAmount: parseFloat(item.ActualAmount) || 0,
+        budgetedAmount: parseFloat(item.BudgetedAmount) || 0,
+        percentageUsed: parseFloat(item.PercentageUsed) || 0,
+        transactionCount: parseInt(item.TransactionCount) || 0,
+      }));
+
+      setBudgetData(budgetFormatted);
+    } catch (err) {
+      console.error('Failed to load budget data:', err);
+    }
+  };
+
+  const loadIncomeExpenseData = async () => {
+    if (!user?.UserId) return;
+    try {
+      // Get last 6 months of income vs expense data from backend
+      const data = await budgetService.getIncomeExpenseSummary(user.UserId, {
+        months: 6,
+      });
+
+      // Transform to chart format
+      const formatted = data.map(item => ({
+        month: item.Month, // This is the MonthStart date
+        income: parseFloat(item.Income) || 0,
+        expenses: parseFloat(item.Expenses) || 0,
+        netSavings: parseFloat(item.NetSavings) || 0,
+        savingsRate: parseFloat(item.SavingsRate) || 0,
+      }));
+
+      setIncomeExpenseData(formatted);
+    } catch (err) {
+      console.error('Failed to load income/expense data:', err);
     }
   };
 
@@ -128,170 +189,158 @@ export default function InsightsScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>Insights</Text>
 
-        <Card style={styles.card}>
-          <Card.Content>
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>Category Breakdown</Text>
-              <View style={styles.chipRow}>
-                <Chip
-                  mode={rangeMode === 'this' ? 'flat' : 'outlined'}
-                  onPress={() => setRangeMode('this')}
-                  style={styles.rangeChip}
-                >
-                  This month
-                </Chip>
-                <Chip
-                  mode={rangeMode === 'last' ? 'flat' : 'outlined'}
-                  onPress={() => setRangeMode('last')}
-                  style={styles.rangeChip}
-                >
-                  Last month
-                </Chip>
-              </View>
-            </View>
+        {/* Chart Type Selector */}
+        <SegmentedButtons
+          value={chartView}
+          onValueChange={setChartView}
+          buttons={[
+            { value: 'pie', label: 'Spending', icon: 'chart-pie' },
+            { value: 'trend', label: 'Trends', icon: 'chart-line' },
+            { value: 'budget', label: 'Budget', icon: 'chart-bar' },
+            { value: 'income', label: 'Income', icon: 'cash-multiple' },
+          ]}
+          style={styles.segmentedButtons}
+        />
 
-            {loading && (
-              <View style={styles.center}>
-                <ActivityIndicator />
-              </View>
-            )}
+        {/* Month Range Selector */}
+        <View style={styles.chipContainer}>
+          <Chip
+            mode={rangeMode === 'this' ? 'flat' : 'outlined'}
+            onPress={() => setRangeMode('this')}
+            style={styles.rangeChip}
+          >
+            This month
+          </Chip>
+          <Chip
+            mode={rangeMode === 'last' ? 'flat' : 'outlined'}
+            onPress={() => setRangeMode('last')}
+            style={styles.rangeChip}
+          >
+            Last month
+          </Chip>
+        </View>
 
-            {!loading && error && (
+        {loading && (
+          <View style={styles.center}>
+            <ActivityIndicator size="large" />
+          </View>
+        )}
+
+        {!loading && error && (
+          <Card style={styles.card}>
+            <Card.Content>
               <Text style={styles.errorText}>{error}</Text>
+            </Card.Content>
+          </Card>
+        )}
+
+        {!loading && !error && (
+          <>
+            {/* Chart Views */}
+            {chartView === 'pie' && (
+              <SpendingPieChart 
+                data={summary.map(cat => ({
+                  category: cat.Category,
+                  totalAmount: cat.TotalAmount,
+                }))}
+                title="Spending by Category"
+              />
             )}
 
-            {!loading && !error && summary.length === 0 && (
-              <Text style={styles.emptyText}>No expenses for this period.</Text>
+            {chartView === 'trend' && selectedCategory && (
+              <TrendLineChart
+                data={trendData.map(t => ({
+                  month: `${t.Year}-${String(t.Month).padStart(2, '0')}-01`,
+                  amount: t.TotalAmount,
+                }))}
+                title={`Trend: ${selectedCategory}`}
+                showAverage={true}
+              />
             )}
 
-            {!loading && !error && summary.length > 0 && (
-              <>
-                {/* Simple horizontal bar \"pie\" with tap-to-view trends */}
-                {summary.map((cat) => {
-                  const value = parseFloat(cat.TotalAmount) || 0;
-                  const pct = total > 0 ? (value / total) * 100 : 0;
-                  return (
-                    <View
-                      key={cat.Category}
-                      style={styles.row}
-                    >
-                      <View style={styles.rowHeader}>
-                        <Text
-                          style={styles.categoryName}
-                          onPress={() => loadTrends(cat.Category)}
-                        >
-                          {cat.Category}
+            {chartView === 'trend' && !selectedCategory && (
+              <Card style={styles.card}>
+                <Card.Content>
+                  <Text style={styles.emptyText}>
+                    Select a category below to view trends
+                  </Text>
+                </Card.Content>
+              </Card>
+            )}
+
+            {chartView === 'budget' && (
+              <BudgetBarChart
+                data={budgetData}
+                title="Budget vs Actual"
+                showPercentages={true}
+              />
+            )}
+
+            {chartView === 'income' && (
+              <IncomeVsExpenseChart
+                data={incomeExpenseData}
+                title="Income vs Expenses"
+                showSavings={true}
+              />
+            )}
+
+            {/* Category List for selecting trends */}
+            {summary.length > 0 && (
+              <Card style={styles.card}>
+                <Card.Content>
+                  <Text style={styles.cardTitle}>Category Details</Text>
+                  {summary.map((cat) => {
+                    const value = parseFloat(cat.TotalAmount) || 0;
+                    const pct = total > 0 ? (value / total) * 100 : 0;
+                    return (
+                      <View
+                        key={cat.Category}
+                        style={styles.row}
+                      >
+                        <View style={styles.rowHeader}>
+                          <Text
+                            style={[
+                              styles.categoryName,
+                              selectedCategory === cat.Category && styles.selectedCategory
+                            ]}
+                            onPress={() => {
+                              setChartView('trend');
+                              loadTrends(cat.Category);
+                            }}
+                          >
+                            {cat.Category}
+                          </Text>
+                          <Text style={styles.categoryAmount}>
+                            {formatCurrency(value)}
+                          </Text>
+                        </View>
+                        <View style={styles.barBackground}>
+                          <View
+                            style={[
+                              styles.barFill,
+                              { width: `${Math.min(100, pct)}%` },
+                            ]}
+                          />
+                        </View>
+                        <Text style={styles.percentText}>
+                          {pct.toFixed(1)}% • {cat.TransactionCount} tx
                         </Text>
-                        <Text style={styles.categoryAmount}>
-                          {formatCurrency(value)}
-                        </Text>
                       </View>
-                      <View style={styles.barBackground}>
-                        <View
-                          style={[
-                            styles.barFill,
-                            { width: `${Math.min(100, pct)}%` },
-                          ]}
-                        />
-                      </View>
-                      <Text style={styles.percentText}>
-                        {pct.toFixed(1)}% • {cat.TransactionCount} tx
-                      </Text>
-                    </View>
-                  );
-                })}
-
-                {/* Top 3 categories */}
-                <View style={styles.topCategories}>
-                  <Text style={styles.subTitle}>Top categories</Text>
-                  {summary.slice(0, 3).map((cat) => (
-                    <Text key={cat.Category} style={styles.topCategoryItem}>
-                      • {cat.Category} — {formatCurrency(cat.TotalAmount)}
-                    </Text>
-                  ))}
-                </View>
-
-                {/* Category trend details */}
-                {selectedCategory && (
-                  <View style={styles.trendSection}>
-                    <Text style={styles.subTitle}>
-                      Trend — {selectedCategory}
-                    </Text>
-                    {trendLoading && (
-                      <View style={styles.center}>
-                        <ActivityIndicator />
-                      </View>
-                    )}
-                    {!trendLoading && trendError && (
-                      <Text style={styles.errorText}>{trendError}</Text>
-                    )}
-                    {!trendLoading && !trendError && trendData.length === 0 && (
-                      <Text style={styles.emptyText}>
-                        No trend data available.
-                      </Text>
-                    )}
-                    {!trendLoading && !trendError && trendData.length > 0 && (
-                      <>
-                        {(() => {
-                          const stats = computeAverages();
-                          if (!stats) return null;
-                          const { current, avg3, avg6, avg12 } = stats;
-                          return (
-                            <View style={styles.trendSummary}>
-                              <Text style={styles.trendSummaryText}>
-                                This month: {formatCurrency(current.value)}
-                              </Text>
-                              <Text style={styles.trendSummaryText}>
-                                3‑month avg: {formatCurrency(avg3)}
-                              </Text>
-                              <Text style={styles.trendSummaryText}>
-                                6‑month avg: {formatCurrency(avg6)}
-                              </Text>
-                              <Text style={styles.trendSummaryText}>
-                                12‑month avg: {formatCurrency(avg12)}
-                              </Text>
-                            </View>
-                          );
-                        })()}
-                        {computeAverages()?.points.map((p) => (
-                          <View key={`${p.year}-${p.month}`} style={styles.row}>
-                            <View style={styles.rowHeader}>
-                              <Text style={styles.categoryName}>{p.label}</Text>
-                              <Text style={styles.categoryAmount}>
-                                {formatCurrency(p.value)}
-                              </Text>
-                            </View>
-                            <View style={styles.barBackground}>
-                              <View
-                                style={[
-                                  styles.barFill,
-                                  {
-                                    width: `${Math.min(
-                                      100,
-                                      p.value > 0
-                                        ? (p.value /
-                                            Math.max(
-                                              ...computeAverages().points.map(
-                                                (pt) => pt.value || 0
-                                              )
-                                            )) *
-                                          100
-                                        : 0
-                                    )}%`,
-                                  },
-                                ]}
-                              />
-                            </View>
-                          </View>
-                        ))}
-                      </>
-                    )}
-                  </View>
-                )}
-              </>
+                    );
+                  })}
+                </Card.Content>
+              </Card>
             )}
-          </Card.Content>
-        </Card>
+
+            {summary.length === 0 && (
+              <Card style={styles.card}>
+                <Card.Content>
+                  <Text style={styles.emptyText}>No data for this period</Text>
+                </Card.Content>
+              </Card>
+            )}
+          </>
+        )}
       </ScrollView>
     </View>
   );
@@ -308,40 +357,44 @@ const styles = StyleSheet.create({
   center: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 16,
+    paddingVertical: 32,
   },
   title: {
     fontSize: 24,
     fontWeight: '700',
     marginBottom: 16,
   },
-  card: {
+  segmentedButtons: {
     marginBottom: 16,
   },
-  cardHeader: {
+  chipContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  rangeChip: {
+    marginHorizontal: 4,
+  },
+  card: {
+    marginBottom: 16,
   },
   cardTitle: {
     fontSize: 18,
     fontWeight: '600',
-  },
-  chipRow: {
-    flexDirection: 'row',
-  },
-  rangeChip: {
-    marginLeft: 6,
+    marginBottom: 12,
   },
   errorText: {
     color: '#d32f2f',
+    textAlign: 'center',
+    padding: 16,
   },
   emptyText: {
     color: '#666',
+    textAlign: 'center',
+    padding: 16,
   },
   row: {
-    marginBottom: 10,
+    marginBottom: 12,
   },
   rowHeader: {
     flexDirection: 'row',
@@ -351,6 +404,11 @@ const styles = StyleSheet.create({
   categoryName: {
     fontSize: 14,
     fontWeight: '500',
+    color: '#6200ee',
+  },
+  selectedCategory: {
+    fontWeight: '700',
+    textDecorationLine: 'underline',
   },
   categoryAmount: {
     fontSize: 14,
@@ -370,18 +428,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#666',
     marginTop: 2,
-  },
-  topCategories: {
-    marginTop: 16,
-  },
-  subTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 6,
-  },
-  topCategoryItem: {
-    fontSize: 14,
-    color: '#333',
   },
 });
 

@@ -11,7 +11,7 @@ async function testDashboard() {
     
     // First check if procedure exists
     const procCheck = await executeQuery(
-      "SELECT name FROM sys.procedures WHERE name = 'sprb_GetDashboardStats'"
+      "SELECT name FROM sys.procedures WHERE name = 'spmb_GetDashboardStats'"
     );
     console.log('Procedure exists:', procCheck.recordset.length > 0);
     
@@ -19,11 +19,11 @@ async function testDashboard() {
       console.log('Creating procedure...');
       // Execute the procedure creation script
       await executeQuery(`
-        IF EXISTS (SELECT * FROM sys.objects WHERE type = 'P' AND name = 'sprb_GetDashboardStats')
-            DROP PROCEDURE sprb_GetDashboardStats
+        IF EXISTS (SELECT * FROM sys.objects WHERE type = 'P' AND name = 'spmb_GetDashboardStats')
+            DROP PROCEDURE spmb_GetDashboardStats
         
         EXEC('
-        CREATE PROCEDURE sprb_GetDashboardStats
+        CREATE PROCEDURE spmb_GetDashboardStats
             @UserId UNIQUEIDENTIFIER,
             @StartDate DATE,
             @EndDate DATE
@@ -69,7 +69,7 @@ async function testDashboard() {
     }
     
     // Test the procedure
-    const result = await executeStoredProcedure('sprb_GetDashboardStats', {
+    const result = await executeStoredProcedure('spmb_GetDashboardStats', {
       UserId: { type: sql.UniqueIdentifier, value: userId },
       StartDate: { type: sql.Date, value: new Date(startDate) },
       EndDate: { type: sql.Date, value: new Date(endDate) }
@@ -81,7 +81,7 @@ async function testDashboard() {
     console.log('Recent transactions count:', result.recordsets?.[2]?.length);
     
     // Also test transactions endpoint directly
-    const transResult = await executeStoredProcedure('sprb_GetTransactionsByUserID', {
+    const transResult = await executeStoredProcedure('spmb_GetTransactionsByUserID', {
       UserId: { type: sql.UniqueIdentifier, value: userId }
     });
     console.log('Direct transactions count:', transResult.recordset?.length);

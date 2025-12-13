@@ -19,7 +19,7 @@ const protect = async (req, res, next) => {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
       // Get user from database
-      const result = await executeStoredProcedure('sprb_GetUserById', {
+      const result = await executeStoredProcedure('spmb_GetUserById', {
         UserId: { type: sql.UniqueIdentifier, value: decoded.userId }
       });
 

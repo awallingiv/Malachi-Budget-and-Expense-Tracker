@@ -3,6 +3,7 @@ const { body, query, validationResult } = require('express-validator');
 const { executeStoredProcedure, executeQuery, sql } = require('../config/database');
 const { generateToken } = require('../middleware/auth');
 const emailService = require('../services/emailService');
+const bcrypt = require('bcryptjs');
 
 const router = express.Router();
 
@@ -12,10 +13,11 @@ const router = express.Router();
 const handleValidationErrors = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
+    console.log('❌ Validation errors:', JSON.stringify(errors.array(), null, 2));
     return res.status(400).json({
-      success: false,
-      error: 'Validation failed',
-      details: errors.array()
+      Success: false,
+      Message: 'Validation failed',
+      Errors: errors.array()
     });
   }
   next();
@@ -31,8 +33,8 @@ router.post('/register', [
     .isLength({ min: 1, max: 17 })
     .withMessage('Username must be 1-17 characters'),
   body('password')
-    .isLength({ min: 1, max: 16 })
-    .withMessage('Password must be 1-16 characters'),
+    .isLength({ min: 8 })
+    .withMessage('Password must be at least 8 characters'),
   body('email')
     .isEmail()
     .isLength({ max: 45 })
@@ -45,9 +47,12 @@ router.post('/register', [
   try {
     const { username, password, email, name } = req.body;
 
-    const result = await executeStoredProcedure('sprb_InsertUser', {
+    // Hash password with bcrypt (salt rounds = 10)
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const result = await executeStoredProcedure('spmb_InsertUser', {
       Username: { type: sql.VarChar(17), value: username },
-      Pass: { type: sql.VarChar(16), value: password },
+      Pass: { type: sql.VarChar(255), value: hashedPassword },
       Email: { type: sql.VarChar(45), value: email },
       Name: { type: sql.VarChar(25), value: name || null }
     });
@@ -55,6 +60,18 @@ router.post('/register', [
     const response = result.recordset[0];
 
     if (response.Success) {
+      // Initialize default expense groupings for new user
+      try {
+        await executeStoredProcedure('spmb_InitializeDefaultGroupings', {
+          UserID: { type: sql.UniqueIdentifier, value: response.UserId },
+          Username: { type: sql.VarChar(17), value: username }
+        });
+        console.log(`✅ Default groupings initialized for user: ${username}`);
+      } catch (groupingError) {
+        console.error(`⚠️ Failed to initialize groupings for ${username}:`, groupingError);
+        // Don't block registration if groupings fail
+      }
+
       // Send validation email asynchronously (don't block response)
       emailService.sendValidationEmail(email, response.ValidationCode, username)
         .then(emailSent => {
@@ -108,9 +125,12 @@ router.post('/validate', [
   try {
     const { usernameOrEmail, password, validationCode } = req.body;
 
-    const result = await executeStoredProcedure('sprb_RegisterUser', {
+    // Hash password with bcrypt (salt rounds = 10)
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const result = await executeStoredProcedure('spmb_RegisterUser', {
       UsernameOrEmail: { type: sql.VarChar(50), value: usernameOrEmail },
-      Pass: { type: sql.VarChar(16), value: password },
+      Pass: { type: sql.VarChar(255), value: hashedPassword },
       ValidationCode: { type: sql.UniqueIdentifier, value: validationCode }
     });
 
@@ -144,43 +164,57 @@ router.post('/login', [
 ], handleValidationErrors, async (req, res) => {
   try {
     const { usernameOrEmail, password } = req.body;
-
-    // Try login with username first
-    let result = await executeStoredProcedure('sprb_LoginUserWithUsername', {
-      Username: { type: sql.VarChar(17), value: usernameOrEmail },
-      Password: { type: sql.VarChar(16), value: password }
+    const isEmail = usernameOrEmail.includes('@');
+    
+    // Retrieve user by email or username to get stored password hash
+    const userQuery = isEmail 
+      ? 'SELECT UserId, Username, Name, Email, Pass, Validated FROM Users WHERE Email = @identifier'
+      : 'SELECT UserId, Username, Name, Email, Pass, Validated FROM Users WHERE Username = @identifier';
+    
+    const userResult = await executeQuery(userQuery, {
+      identifier: { type: sql.VarChar(50), value: usernameOrEmail }
     });
 
-    let response = result.recordset[0];
+    const user = userResult.recordset && userResult.recordset[0];
 
-    // If username login failed and input looks like email, try email login
-    if (!response.Success && usernameOrEmail.includes('@')) {
-      result = await executeStoredProcedure('sprb_LoginUserWithEmail', {
-        Email: { type: sql.VarChar(50), value: usernameOrEmail },
-        Password: { type: sql.VarChar(16), value: password }
-      });
-      response = result.recordset[0];
-    }
-
-    if (response.Success) {
-      // Generate JWT token
-      const token = generateToken(response.UserId);
-
-      res.json({
-        Success: true,
-        Message: response.Message,
-        UserId: response.UserId,
-        Username: response.Username,
-        Name: response.Name,
-        Email: response.Email,
-        token
-      });
-    } else {
-      res.status(401).json({
+    if (!user) {
+      return res.status(401).json({
         Success: false,
-        Message: response.Message
+        Message: 'Invalid username or password.'
       });
     }
+
+    // Check if user is validated
+    if (!user.Validated) {
+      return res.status(401).json({
+        Success: false,
+        Message: 'User has not been validated.'
+      });
+    }
+
+    // Compare password with bcrypt
+    const isPasswordValid = await bcrypt.compare(password, user.Pass);
+
+    if (!isPasswordValid) {
+      return res.status(401).json({
+        Success: false,
+        Message: 'Invalid username or password.'
+      });
+    }
+
+    // Login successful
+    // Generate JWT token
+    const token = generateToken(user.UserId);
+
+    res.json({
+      Success: true,
+      Message: 'Login successful.',
+      UserId: user.UserId,
+      Username: user.Username,
+      Name: user.Name,
+      Email: user.Email,
+      token
+    });
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({
@@ -203,7 +237,7 @@ router.post('/forgot-password', [
   try {
     const { usernameOrEmail } = req.body;
 
-    const result = await executeStoredProcedure('sprb_UpdateValidationCode', {
+    const result = await executeStoredProcedure('spmb_UpdateValidationCode', {
       UsernameOrEmail: { type: sql.VarChar(50), value: usernameOrEmail }
     });
 
@@ -279,7 +313,7 @@ router.get(
     try {
       const { email, code } = req.query;
 
-      const result = await executeStoredProcedure('sprb_VerifyEmailWithCode', {
+      const result = await executeStoredProcedure('spmb_VerifyEmailWithCode', {
         Email: { type: sql.VarChar(45), value: email },
         ValidationCode: { type: sql.UniqueIdentifier, value: code },
       });
@@ -319,16 +353,17 @@ router.post(
     body('email').isEmail().withMessage('Valid email is required'),
     body('code').isUUID().withMessage('Valid reset code is required'),
     body('newPassword')
-      .isLength({ min: 1, max: 16 })
-      .withMessage('New password must be 1-16 characters'),
+      .isLength({ min: 8 })
+      .withMessage('New password must be at least 8 characters'),
   ],
   handleValidationErrors,
   async (req, res) => {
     try {
+      console.log('🔍 Reset password request body:', req.body);
       const { email, code, newPassword } = req.body;
 
       // First, verify the code is valid for this email and not expired
-      const verifyResult = await executeStoredProcedure('sprb_VerifyEmailWithCode', {
+      const verifyResult = await executeStoredProcedure('spmb_VerifyEmailWithCode', {
         Email: { type: sql.VarChar(45), value: email },
         ValidationCode: { type: sql.UniqueIdentifier, value: code },
       });
@@ -342,10 +377,13 @@ router.post(
         });
       }
 
+      // Hash new password with bcrypt (salt rounds = 10)
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+
       // Update the user's password and mark as validated
-      const updateResult = await executeStoredProcedure('sprb_UpdateUserPassword', {
+      const updateResult = await executeStoredProcedure('spmb_UpdateUserPassword', {
         UserID: { type: sql.UniqueIdentifier, value: verifyResponse.UserId },
-        NewPassword: { type: sql.VarChar(16), value: newPassword },
+        NewPassword: { type: sql.VarChar(255), value: hashedPassword },
       });
 
       const updateResponse = updateResult.recordset && updateResult.recordset[0];

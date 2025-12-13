@@ -2,6 +2,7 @@ const express = require('express');
 const { body, param, query, validationResult } = require('express-validator');
 const { executeStoredProcedure, executeQuery, sql } = require('../config/database');
 const { protect, validateOwnership } = require('../middleware/auth');
+const cache = require('../services/cacheService');
 
 const router = express.Router();
 
@@ -138,10 +139,17 @@ router.get('/dashboard/:userId', async (req, res) => {
 
     console.log('Dashboard request:', { userId, startDate, endDate });
 
+    // Check cache first
+    const cacheKey = cache.generateKey('dashboard', userId, startDate || 'all', endDate || 'all');
+    const cached = await cache.get(cacheKey);
+    if (cached) {
+      return res.json(cached);
+    }
+
     // Try stored procedure first, fallback to queries
     let result;
     try {
-      result = await executeStoredProcedure('sprb_GetDashboardStats', {
+      result = await executeStoredProcedure('spmb_GetDashboardStats', {
         UserId: { type: sql.UniqueIdentifier, value: userId },
         StartDate: { type: sql.Date, value: startDate ? new Date(startDate) : null },
         EndDate: { type: sql.Date, value: endDate ? new Date(endDate) : null }
@@ -157,7 +165,7 @@ router.get('/dashboard/:userId', async (req, res) => {
         executeQuery('SELECT TableName, ISNULL(SUM(Amount), 0) AS totalAmount, COUNT(*) AS transactionCount FROM Transactions WHERE UserId = @userId GROUP BY TableName ORDER BY totalAmount DESC', {
           userId: { type: sql.UniqueIdentifier, value: userId }
         }),
-        executeQuery('SELECT TOP 5 TransactionId, Username, TableName, Description, Amount, Date, CreationTime FROM Transactions WHERE UserId = @userId ORDER BY CreationTime DESC', {
+        executeQuery('SELECT TOP 5 TransactionId, Username, TableName, Name, Amount, Date, CreationTime FROM Transactions WHERE UserId = @userId ORDER BY CreationTime DESC', {
           userId: { type: sql.UniqueIdentifier, value: userId }
         })
       ]);
@@ -186,6 +194,9 @@ router.get('/dashboard/:userId', async (req, res) => {
         totalAmount: categories.reduce((sum, cat) => sum + (cat.totalAmount || 0), 0)
       }
     };
+
+    // Cache the response
+    await cache.set(cacheKey, stats, cache.TTL.DASHBOARD_STATS);
 
     console.log('Dashboard stats response:', stats);
     res.json(stats);
@@ -522,6 +533,95 @@ router.get('/category-trends/:userId', [
     res.status(500).json({
       success: false,
       error: 'Failed to fetch category trends',
+    });
+  }
+});
+
+/**
+ * BUDGET COMPARISON
+ */
+
+/**
+ * @route   GET /api/budget/comparison/:userId
+ * @desc    Get budget vs actual spending comparison by category
+ * @access  Private
+ */
+router.get('/comparison/:userId', [
+  param('userId').isUUID().withMessage('Valid user ID required'),
+  query('startDate').optional().isISO8601().withMessage('Valid start date required'),
+  query('endDate').optional().isISO8601().withMessage('Valid end date required'),
+], handleValidationErrors, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { startDate, endDate } = req.query;
+
+    if (userId.toUpperCase() !== req.user.UserId.toUpperCase()) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to view budget comparison for this user',
+      });
+    }
+
+    const now = new Date();
+    const defaultStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const defaultEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+    const start = startDate ? new Date(startDate) : defaultStart;
+    const end = endDate ? new Date(endDate) : defaultEnd;
+
+    const result = await executeStoredProcedure('spmb_GetBudgetComparison', {
+      UserID: { type: sql.UniqueIdentifier, value: userId },
+      StartDate: { type: sql.Date, value: start },
+      EndDate: { type: sql.Date, value: end },
+    });
+
+    res.json(result.recordset || []);
+  } catch (error) {
+    console.error('Get budget comparison error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch budget comparison',
+    });
+  }
+});
+
+/**
+ * INCOME/EXPENSE SUMMARY
+ */
+
+/**
+ * @route   GET /api/budget/income-expense-summary/:userId
+ * @desc    Get monthly income vs expense summary
+ * @access  Private
+ */
+router.get('/income-expense-summary/:userId', [
+  param('userId').isUUID().withMessage('Valid user ID required'),
+  query('months').optional().isInt({ min: 1, max: 24 }).withMessage('Months must be between 1 and 24'),
+], handleValidationErrors, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { months } = req.query;
+
+    if (userId.toUpperCase() !== req.user.UserId.toUpperCase()) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to view income/expense summary for this user',
+      });
+    }
+
+    const monthsInt = months ? parseInt(months, 10) : 6;
+
+    const result = await executeStoredProcedure('spmb_GetIncomeSummaryByMonth', {
+      UserID: { type: sql.UniqueIdentifier, value: userId },
+      MonthsBack: { type: sql.Int, value: monthsInt },
+    });
+
+    res.json(result.recordset || []);
+  } catch (error) {
+    console.error('Get income/expense summary error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch income/expense summary',
     });
   }
 });
@@ -946,14 +1046,15 @@ router.delete('/budgets/:budgetId', [
 
 /**
  * @route   GET /api/budget/transactions/:userId
- * @desc    Get all transactions for user with optional filters
+ * @desc    Get all transactions for user with optional filters and pagination
  * @access  Private
  */
 router.get('/transactions/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
     const {
-      limit,
+      page = 1,
+      limit = 50,
       category,
       startDate,
       endDate,
@@ -964,6 +1065,7 @@ router.get('/transactions/:userId', async (req, res) => {
 
     console.log('Transactions request:', {
       userId,
+      page,
       limit,
       category,
       startDate,
@@ -973,37 +1075,57 @@ router.get('/transactions/:userId', async (req, res) => {
       q,
     });
 
+    // Validate pagination parameters
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 50));
+    const offset = (pageNum - 1) * limitNum;
+
+    // Build stored procedure parameters for data retrieval
     const params = {
       UserId: { type: sql.UniqueIdentifier, value: userId },
+      Offset: { type: sql.Int, value: offset },
+      Limit: { type: sql.Int, value: limitNum }
+    };
+
+    // Build count procedure parameters
+    const countParams = {
+      UserId: { type: sql.UniqueIdentifier, value: userId }
     };
 
     // Add TableName parameter if category is specified
     if (category) {
       params.TableName = { type: sql.NVarChar, value: category };
+      countParams.TableName = { type: sql.NVarChar, value: category };
     }
 
-    const result = await executeStoredProcedure('sprb_GetTransactionsByUserID', params);
+    // Add date parameters for database-side filtering
+    if (startDate) {
+      params.StartDate = { type: sql.Date, value: new Date(startDate) };
+      countParams.StartDate = { type: sql.Date, value: new Date(startDate) };
+    }
+    if (endDate) {
+      params.EndDate = { type: sql.Date, value: new Date(endDate) };
+      countParams.EndDate = { type: sql.Date, value: new Date(endDate) };
+    }
+
+    // Execute both procedures in parallel
+    const [result, countResult] = await Promise.all([
+      executeStoredProcedure('spmb_GetTransactionsByUserID', params),
+      executeStoredProcedure('spmb_GetTransactionCount', countParams)
+    ]);
 
     let transactions = result.recordset || [];
-    console.log(`Found ${transactions.length} base transactions for category: ${category || 'all'}`);
+    const totalCount = countResult.recordset?.[0]?.TotalCount || 0;
+    
+    console.log(`Found ${transactions.length} transactions in current page (${totalCount} total) for category: ${category || 'all'}, dates: ${startDate || 'any'} to ${endDate || 'any'}`);
 
-    // Apply additional in-memory filters
-    const start = startDate ? new Date(startDate) : null;
-    const end = endDate ? new Date(endDate) : null;
+    // Apply additional in-memory filters (only for fields not supported by stored procedure)
     const min = minAmount !== undefined ? parseFloat(minAmount) : null;
     const max = maxAmount !== undefined ? parseFloat(maxAmount) : null;
     const queryText = (q || '').toLowerCase();
 
-    if (start || end || min !== null || max !== null || queryText) {
+    if (min !== null || max !== null || queryText) {
       transactions = transactions.filter((t) => {
-        // Date filter
-        if (start || end) {
-          const d = new Date(t.Date || t.CreationTime);
-          if (Number.isNaN(d.getTime())) return false;
-          if (start && d < start) return false;
-          if (end && d > end) return false;
-        }
-
         // Amount range filter
         const amount = parseFloat(t.Amount) || 0;
         if (min !== null && amount < min) return false;
@@ -1028,16 +1150,19 @@ router.get('/transactions/:userId', async (req, res) => {
       });
     }
 
-    // Sort by most recent and apply limit if specified
-    transactions = transactions.sort(
-      (a, b) => new Date(b.Date || b.CreationTime) - new Date(a.Date || a.CreationTime)
-    );
+    // Calculate pagination metadata
+    const totalPages = Math.ceil(totalCount / limitNum);
 
-    if (limit) {
-      transactions = transactions.slice(0, parseInt(limit, 10));
-    }
-
-    res.json(transactions);
+    res.json({
+      data: transactions,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total: totalCount,
+        totalPages: totalPages,
+        hasMore: pageNum < totalPages
+      }
+    });
   } catch (error) {
     console.error('Get transactions error:', error);
     res.status(500).json({
@@ -1059,7 +1184,7 @@ router.get('/categories/:userId', [
     const { userId } = req.params;
 
     // Get unique categories from user's transactions
-    const result = await executeStoredProcedure('sprb_GetTransactionsByUserID', {
+    const result = await executeStoredProcedure('spmb_GetTransactionsByUserID', {
       UserId: { type: sql.UniqueIdentifier, value: userId }
     });
 
@@ -1088,7 +1213,7 @@ router.get('/categories/:userId', [
 router.post('/transactions', [
   body('UserID').isUUID().withMessage('Valid user ID required'),
   body('Username').isLength({ min: 1, max: 17 }).withMessage('Username required (max 17 chars)'),
-  body('TableName').isLength({ min: 1, max: 20 }).withMessage('Category required (max 20 chars)'),
+  body('Name').isLength({ min: 1, max: 150 }).withMessage('Name/Category required (max 150 chars)'),
   body('Description').optional().isLength({ max: 150 }).withMessage('Description max 150 characters'),
   body('Amount').custom((value) => {
     if (value === undefined || value === null || value === '') return true; // Allow empty, will default to 0
@@ -1106,21 +1231,25 @@ router.post('/transactions', [
     return !isNaN(date.getTime());
   }).withMessage('Valid date required'),
   body('Notes').optional().isLength({ max: 60 }).withMessage('Notes max 60 characters'),
-  body('Category').optional().isLength({ max: 20 }).withMessage('Category max 20 characters'),
-  body('Status').optional().isLength({ max: 20 }).withMessage('Status max 20 characters')
+  body('Category').optional().isLength({ max: 50 }).withMessage('Category max 50 characters'),
+  body('Status').optional().isLength({ max: 20 }).withMessage('Status max 20 characters'),
+  body('GroupingID').optional().isUUID().withMessage('GroupingID must be a valid UUID'),
+  body('CategoryID').optional().isUUID().withMessage('CategoryID must be a valid UUID')
 ], handleValidationErrors, async (req, res) => {
   try {
     const {
       UserID,
       Username,
-      TableName,
+      Name,
       Description,
       Amount,
       Due,
       Date: dateValue,
       Notes,
       Category,
-      Status
+      Status,
+      GroupingID,
+      CategoryID
     } = req.body;
 
     // Validate ownership (case-insensitive UUID comparison)
@@ -1154,20 +1283,24 @@ router.post('/transactions', [
       }
     }
 
-    const result = await executeStoredProcedure('sprb_InsertTransaction', {
+    const result = await executeStoredProcedure('spmb_InsertTransaction', {
       UserID: { type: sql.UniqueIdentifier, value: UserID },
       Username: { type: sql.VarChar(17), value: Username },
-      TableName: { type: sql.VarChar(20), value: TableName },
-      Description: { type: sql.VarChar(150), value: Description || null },
+      Name: { type: sql.VarChar(150), value: Name || null },
       Amount: { type: sql.Float, value: Amount || null },
       Due: { type: sql.DateTime, value: dueDate },
       Date: { type: sql.DateTime, value: transactionDate },
       Notes: { type: sql.VarChar(60), value: Notes || null },
-      Category: { type: sql.VarChar(20), value: Category || null },
-      Status: { type: sql.VarChar(20), value: Status || null }
+      Category: { type: sql.VarChar(50), value: Category || null },
+      Status: { type: sql.VarChar(20), value: Status || null },
+      GroupingID: { type: sql.UniqueIdentifier, value: GroupingID || null },
+      CategoryID: { type: sql.UniqueIdentifier, value: CategoryID || null }
     });
 
     const response = result.recordset[0];
+
+    // Invalidate dashboard cache after creating transaction
+    await cache.invalidatePattern(`dashboard:${UserID}:*`);
 
     res.status(201).json({
       success: true,
@@ -1215,7 +1348,9 @@ router.put('/transactions/:transactionId', [
   }).withMessage('Valid date required'),
   body('Notes').optional().isLength({ max: 60 }).withMessage('Notes max 60 characters'),
   body('Category').optional().isLength({ max: 20 }).withMessage('Category max 20 characters'),
-  body('Status').optional().isLength({ max: 20 }).withMessage('Status max 20 characters')
+  body('Status').optional().isLength({ max: 20 }).withMessage('Status max 20 characters'),
+  body('GroupingID').optional().isUUID().withMessage('GroupingID must be a valid UUID'),
+  body('CategoryID').optional().isUUID().withMessage('CategoryID must be a valid UUID')
 ], handleValidationErrors, async (req, res) => {
   try {
     const { transactionId } = req.params;
@@ -1227,7 +1362,9 @@ router.put('/transactions/:transactionId', [
       Date: dateValue,
       Notes,
       Category,
-      Status
+      Status,
+      GroupingID,
+      CategoryID
     } = req.body;
 
     // Validate ownership (case-insensitive UUID comparison)
@@ -1261,19 +1398,24 @@ router.put('/transactions/:transactionId', [
       }
     }
 
-    const result = await executeStoredProcedure('sprb_UpdateTransaction', {
+    const result = await executeStoredProcedure('spmb_UpdateTransaction', {
       TransactionId: { type: sql.UniqueIdentifier, value: transactionId },
-      Description: { type: sql.VarChar(150), value: Description || null },
+      Name: { type: sql.VarChar(150), value: Description || null },
       Amount: { type: sql.Float, value: Amount || null },
       Due: { type: sql.DateTime, value: dueDate },
       Date: { type: sql.DateTime, value: transactionDate },
       Notes: { type: sql.VarChar(60), value: Notes || null },
       Category: { type: sql.VarChar(20), value: Category || null },
       Status: { type: sql.VarChar(20), value: Status || null },
-      UserID: { type: sql.UniqueIdentifier, value: UserID }
+      UserID: { type: sql.UniqueIdentifier, value: UserID },
+      GroupingID: { type: sql.UniqueIdentifier, value: GroupingID || null },
+      CategoryID: { type: sql.UniqueIdentifier, value: CategoryID || null }
     });
 
     const response = result.recordset[0];
+
+    // Invalidate dashboard cache after updating transaction
+    await cache.invalidatePattern(`dashboard:${UserID}:*`);
 
     if (response.Success) {
       res.json({
@@ -1330,7 +1472,7 @@ router.delete('/transactions/:transactionId', [
       });
     }
 
-    const result = await executeStoredProcedure('sprb_DeleteTransaction', {
+    const result = await executeStoredProcedure('spmb_DeleteTransaction', {
       TransactionId: { type: sql.UniqueIdentifier, value: transactionId },
       UserID: { type: sql.UniqueIdentifier, value: req.user.UserId }
     });
@@ -1346,6 +1488,9 @@ router.delete('/transactions/:transactionId', [
     }
 
     if (response.Success) {
+      // Invalidate dashboard cache after deleting transaction
+      await cache.invalidatePattern(`dashboard:${userId}:*`);
+
       res.json({
         success: true,
         message: response.Message || 'Transaction deleted successfully'
@@ -1367,44 +1512,91 @@ router.delete('/transactions/:transactionId', [
 
 /**
  * @route   GET /api/budget/income/:userId
- * @desc    Get income records for user
+ * @desc    Get income records for user with optional date filters and pagination
  * @access  Private
  */
 router.get('/income/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
-    const { startDate, endDate } = req.query;
+    const { page = 1, limit = 50, startDate, endDate } = req.query;
 
-    console.log('Income request:', { userId, startDate, endDate });
+    console.log('Income request:', { userId, page, limit, startDate, endDate });
 
-    // Try stored procedure first, fallback to direct query
-    let result;
+    // Validate pagination parameters
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 50));
+    const offset = (pageNum - 1) * limitNum;
+
+    // Build stored procedure parameters
+    const params = {
+      UserId: { type: sql.UniqueIdentifier, value: userId },
+      Offset: { type: sql.Int, value: offset },
+      Limit: { type: sql.Int, value: limitNum }
+    };
+
+    const countParams = {
+      UserId: { type: sql.UniqueIdentifier, value: userId }
+    };
+
+    // Add date parameters if provided
+    if (startDate) {
+      params.StartDate = { type: sql.DateTime, value: new Date(startDate) };
+      countParams.StartDate = { type: sql.DateTime, value: new Date(startDate) };
+    }
+    if (endDate) {
+      params.EndDate = { type: sql.DateTime, value: new Date(endDate) };
+      countParams.EndDate = { type: sql.DateTime, value: new Date(endDate) };
+    }
+
+    // Try stored procedures first, fallback to direct queries
+    let result, countResult;
     try {
-      result = await executeStoredProcedure('sprb_GetIncomeByUsernameAndDate', {
-        UserId: { type: sql.UniqueIdentifier, value: userId },
-        StartDate: { type: sql.DateTime, value: startDate ? new Date(startDate) : null },
-        EndDate: { type: sql.DateTime, value: endDate ? new Date(endDate) : null }
-      });
+      [result, countResult] = await Promise.all([
+        executeStoredProcedure('spmb_GetIncomeByUserIDAndDate', params),
+        executeStoredProcedure('spmb_GetIncomeCount', countParams)
+      ]);
     } catch (procError) {
-      console.log('Income stored procedure failed, using direct query:', procError.message);
+      console.log('Income stored procedures failed, using direct queries:', procError.message);
       
       // Fallback to direct query
       let query = 'SELECT * FROM Income WHERE UserId = @userId';
-      let params = { userId: { type: sql.UniqueIdentifier, value: userId } };
+      let countQuery = 'SELECT COUNT(*) AS TotalCount FROM Income WHERE UserId = @userId';
+      let queryParams = { userId: { type: sql.UniqueIdentifier, value: userId } };
       
       if (startDate && endDate) {
-        query += ' AND (TRY_CAST(Date AS DATE) BETWEEN @startDate AND @endDate OR CAST(CreationTime AS DATE) BETWEEN @startDate AND @endDate)';
-        params.startDate = { type: sql.Date, value: new Date(startDate) };
-        params.endDate = { type: sql.Date, value: new Date(endDate) };
+        const dateCondition = ' AND (TRY_CAST(Date AS DATE) BETWEEN @startDate AND @endDate OR CAST(CreationTime AS DATE) BETWEEN @startDate AND @endDate)';
+        query += dateCondition;
+        countQuery += dateCondition;
+        queryParams.startDate = { type: sql.Date, value: new Date(startDate) };
+        queryParams.endDate = { type: sql.Date, value: new Date(endDate) };
       }
       
-      query += ' ORDER BY CreationTime DESC';
+      query += ' ORDER BY CreationTime DESC OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY';
+      queryParams.offset = { type: sql.Int, value: offset };
+      queryParams.limit = { type: sql.Int, value: limitNum };
       
-      result = await executeQuery(query, params);
+      [result, countResult] = await Promise.all([
+        executeQuery(query, queryParams),
+        executeQuery(countQuery, queryParams)
+      ]);
     }
 
-    console.log('Income result count:', result.recordset?.length);
-    res.json(result.recordset);
+    const incomeRecords = result.recordset || [];
+    const totalCount = countResult.recordset?.[0]?.TotalCount || 0;
+    const totalPages = Math.ceil(totalCount / limitNum);
+
+    console.log(`Income result: ${incomeRecords.length} records in current page (${totalCount} total)`);
+    
+    res.json({
+      data: incomeRecords,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total: totalCount,
+        totalPages: totalPages,
+        hasMore: pageNum < totalPages
+      }
+    });
   } catch (error) {
     console.error('Get income error:', error);
     res.status(500).json({
@@ -1451,7 +1643,7 @@ router.post('/income', [
       });
     }
 
-    const result = await executeStoredProcedure('sprb_InsertIncome', {
+    const result = await executeStoredProcedure('spmb_InsertIncome', {
       Username: { type: sql.VarChar(17), value: Username },
       UserID: { type: sql.UniqueIdentifier, value: UserID },
       Description: { type: sql.VarChar(45), value: Description || null },
@@ -1465,6 +1657,9 @@ router.post('/income', [
 
     const response = result.recordset[0];
 
+    // Invalidate dashboard cache after creating income
+    await cache.invalidatePattern(`dashboard:${UserID}:*`);
+
     res.status(201).json({
       success: true,
       message: 'Income record created successfully',
@@ -1475,6 +1670,89 @@ router.post('/income', [
     res.status(500).json({
       success: false,
       error: 'Failed to create income record'
+    });
+  }
+});
+
+/**
+ * @route   POST /api/budget/income/copy-from-last-month
+ * @desc    Copy all income from previous month to current month
+ * @access  Private
+ */
+router.post('/income/copy-from-last-month', [
+  body('userId').isUUID().withMessage('Valid user ID required')
+], handleValidationErrors, protect, async (req, res) => {
+  try {
+    const { userId } = req.body;
+
+    // Validate ownership
+    if (userId.toUpperCase() !== req.user.UserId.toUpperCase()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied'
+      });
+    }
+
+    // Calculate last month's date range
+    const now = new Date();
+    const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+
+    // Get last month's income
+    const lastMonthIncome = await executeStoredProcedure('spmb_GetIncomeByUserID', {
+      UserId: { type: sql.UniqueIdentifier, value: userId }
+    });
+
+    // Filter to only last month's records
+    const filtered = lastMonthIncome.recordset.filter(inc => {
+      const incDate = new Date(inc.Date || inc.CreationTime);
+      return incDate >= lastMonth && incDate <= lastMonthEnd;
+    });
+
+    // Copy each income to current month
+    const copied = [];
+    const crypto = require('crypto');
+
+    for (const income of filtered) {
+      const originalDate = new Date(income.Date || income.CreationTime);
+      const dayOfMonth = originalDate.getDate();
+
+      // Create date for same day in current month
+      let newDate = new Date(now.getFullYear(), now.getMonth(), dayOfMonth);
+
+      // Handle edge case: if day doesn't exist in current month (e.g., Jan 31 -> Feb)
+      if (newDate.getMonth() !== now.getMonth()) {
+        newDate = new Date(now.getFullYear(), now.getMonth() + 1, 0); // Last day of current month
+      }
+
+      const newIncomeId = crypto.randomUUID();
+
+      await executeStoredProcedure('spmb_InsertIncome', {
+        Username: { type: sql.VarChar(17), value: req.user.Username },
+        UserID: { type: sql.UniqueIdentifier, value: userId },
+        Description: { type: sql.VarChar(45), value: income.Description || null },
+        Net: { type: sql.Float, value: income.Net || null },
+        Gross: { type: sql.Float, value: income.Gross || null },
+        Tithe: { type: sql.Float, value: income.Tithe || null },
+        TitheStatus: { type: sql.VarChar(45), value: 'Pending' }, // Reset to Pending
+        Date: { type: sql.VarChar(45), value: newDate.toISOString() },
+        PaycheckStatus: { type: sql.VarChar(45), value: income.PaycheckStatus || null }
+      });
+
+      copied.push({ ...income, IncomeId: newIncomeId, Date: newDate.toISOString() });
+    }
+
+    res.json({
+      success: true,
+      message: `Copied ${copied.length} income records`,
+      count: copied.length,
+      copied
+    });
+  } catch (error) {
+    console.error('Copy income error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
     });
   }
 });
@@ -1494,7 +1772,7 @@ router.get('/windows/:userId', [
   try {
     const { userId } = req.params;
 
-    const result = await executeStoredProcedure('sprb_GetCategoryWindows', {
+    const result = await executeStoredProcedure('spmb_GetCategoryWindows', {
       UserID: { type: sql.UniqueIdentifier, value: userId }
     });
 
@@ -1547,7 +1825,7 @@ router.post('/windows', [
       });
     }
 
-    const result = await executeStoredProcedure('sprb_CreateCategoryWindow', {
+    const result = await executeStoredProcedure('spmb_CreateCategoryWindow', {
       UserID: { type: sql.UniqueIdentifier, value: UserID },
       Username: { type: sql.VarChar(17), value: Username },
       CategoryName: { type: sql.VarChar(50), value: CategoryName },
@@ -1617,7 +1895,7 @@ router.put('/windows/:windowId', [
       });
     }
 
-    const result = await executeStoredProcedure('sprb_UpdateCategoryWindow', {
+    const result = await executeStoredProcedure('spmb_UpdateCategoryWindow', {
       WindowID: { type: sql.UniqueIdentifier, value: windowId },
       UserID: { type: sql.UniqueIdentifier, value: UserID },
       DisplayName: { type: sql.VarChar(100), value: DisplayName || null },
@@ -1667,7 +1945,7 @@ router.delete('/windows/:windowId', [
       });
     }
 
-    const result = await executeStoredProcedure('sprb_DeleteCategoryWindow', {
+    const result = await executeStoredProcedure('spmb_DeleteCategoryWindow', {
       WindowID: { type: sql.UniqueIdentifier, value: windowId },
       UserID: { type: sql.UniqueIdentifier, value: userId }
     });
@@ -1703,7 +1981,7 @@ router.get('/windows/:userId/transactions/:categoryName', [
     const { userId, categoryName } = req.params;
     const { startDate, endDate, limit } = req.query;
 
-    const result = await executeStoredProcedure('sprb_GetWindowTransactions', {
+    const result = await executeStoredProcedure('spmb_GetWindowTransactions', {
       UserID: { type: sql.UniqueIdentifier, value: userId },
       CategoryName: { type: sql.VarChar(50), value: categoryName },
       StartDate: { type: sql.Date, value: startDate ? new Date(startDate) : null },
@@ -1745,7 +2023,7 @@ router.post('/windows/positions', [
       });
     }
 
-    const result = await executeStoredProcedure('sprb_UpdateWindowPositions', {
+    const result = await executeStoredProcedure('spmb_UpdateWindowPositions', {
       UserID: { type: sql.UniqueIdentifier, value: UserID },
       WindowUpdates: { type: sql.NVarChar(sql.MAX), value: JSON.stringify(WindowUpdates) }
     });
@@ -1804,7 +2082,7 @@ router.put('/income/:incomeId', [
       });
     }
 
-    const result = await executeStoredProcedure('sprb_UpdateIncome', {
+    const result = await executeStoredProcedure('spmb_UpdateIncome', {
       IncomeId: { type: sql.UniqueIdentifier, value: incomeId },
       UserID: { type: sql.UniqueIdentifier, value: UserID },
       Description: { type: sql.VarChar(45), value: Description || null },
@@ -1818,6 +2096,10 @@ router.put('/income/:incomeId', [
     });
 
     const response = result.recordset[0];
+
+    // Invalidate dashboard cache after updating income
+    await cache.invalidatePattern(`dashboard:${UserID}:*`);
+
     if (response.Success) {
       res.json({
         success: true,
@@ -1867,7 +2149,7 @@ router.delete('/income/:incomeId', [
       });
     }
 
-    const result = await executeStoredProcedure('sprb_DeleteIncome', {
+    const result = await executeStoredProcedure('spmb_DeleteIncome', {
       IncomeId: { type: sql.UniqueIdentifier, value: incomeId },
       UserID: { type: sql.UniqueIdentifier, value: userId }
     });
@@ -1883,6 +2165,9 @@ router.delete('/income/:incomeId', [
     }
     
     if (response.Success) {
+      // Invalidate dashboard cache after deleting income
+      await cache.invalidatePattern(`dashboard:${userId}:*`);
+
       res.json({
         success: true,
         message: response.Message || 'Income record deleted successfully'

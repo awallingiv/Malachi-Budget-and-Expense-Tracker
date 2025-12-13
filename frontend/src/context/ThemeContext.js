@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useColorScheme } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import storage from '../utils/storage';
 
 // Modern Dark Theme Colors - Bleeding Edge Design
 export const THEMES = {
@@ -242,7 +242,7 @@ export const ThemeProvider = ({ children }) => {
 
   const loadThemePreference = async () => {
     try {
-      const savedTheme = await AsyncStorage.getItem('themeMode');
+      const savedTheme = await storage.getItem('themeMode');
       if (savedTheme) {
         setThemeMode(savedTheme);
       }
@@ -274,7 +274,7 @@ export const ThemeProvider = ({ children }) => {
   const changeTheme = async (mode) => {
     try {
       setThemeMode(mode);
-      await AsyncStorage.setItem('themeMode', mode);
+      await storage.setItem('themeMode', mode);
     } catch (error) {
       console.error('Failed to save theme preference:', error);
     }

@@ -1,37 +1,36 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   View, 
+  Text,
   StyleSheet, 
   ScrollView, 
   Alert,
-  RefreshControl 
-} from 'react-native';
-import {
-  Text,
-  Card,
-  Button,
+  RefreshControl,
+  TouchableOpacity,
   TextInput,
-  Portal,
   Modal,
-  IconButton,
-  Chip,
-  Avatar,
-  Divider,
-  List,
-  Switch,
-  ProgressBar
-} from 'react-native-paper';
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { budgetService } from '../services/apiService';
+import { Ionicons } from '@expo/vector-icons';
+import storage from '../utils/storage';
+
+const TITHE_PERCENTAGE_KEY = '@tithe_percentage';
 
 export default function ProfileScreen() {
   const { user, logout } = useAuth();
   const { theme, toggleTheme, themeMode } = useTheme();
+  const insets = useSafeAreaInsets();
+  
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [showTitheModal, setShowTitheModal] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   
@@ -46,8 +45,9 @@ export default function ProfileScreen() {
   
   const [settings, setSettings] = useState({
     notifications: true,
-    darkMode: false,
+    darkMode: themeMode === 'dark',
     autoTithe: true,
+    tithePercentage: 10,
     currency: 'USD'
   });
 
@@ -66,9 +66,38 @@ export default function ProfileScreen() {
     confirmPassword: ''
   });
 
+  // Tithe percentage input
+  const [titheInput, setTitheInput] = useState('10');
+
   useEffect(() => {
     loadUserData();
+    loadTithePercentage();
   }, []);
+
+  const loadTithePercentage = async () => {
+    try {
+      const saved = await storage.getItem(TITHE_PERCENTAGE_KEY);
+      if (saved) {
+        const percentage = parseFloat(saved);
+        setSettings(prev => ({ ...prev, tithePercentage: percentage }));
+        setTitheInput(percentage.toString());
+      }
+    } catch (error) {
+      console.error('Failed to load tithe percentage:', error);
+    }
+  };
+
+  const saveTithePercentage = async (percentage) => {
+    try {
+      await storage.setItem(TITHE_PERCENTAGE_KEY, percentage.toString());
+      setSettings(prev => ({ ...prev, tithePercentage: percentage }));
+      setSuccess('Tithe percentage updated');
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (error) {
+      console.error('Failed to save tithe percentage:', error);
+      setError('Failed to save tithe percentage');
+    }
+  };
 
   const loadUserData = async () => {
     try {
@@ -80,9 +109,12 @@ export default function ProfileScreen() {
         budgetService.getTransactions(user.UserId)
       ]);
       
-      const totalIncome = incomeData.reduce((sum, item) => sum + (parseFloat(item.GrossIncome) || 0), 0);
-      const totalExpenses = transactionData.reduce((sum, item) => sum + (parseFloat(item.Amount) || 0), 0);
-      const totalTithe = incomeData.reduce((sum, item) => sum + (parseFloat(item.TitheAmount) || 0), 0);
+      const totalIncome = (incomeData || []).reduce((sum, item) => 
+        sum + (parseFloat(item.Gross || item.GrossIncome) || 0), 0);
+      const totalExpenses = (transactionData || []).reduce((sum, item) => 
+        sum + (parseFloat(item.Amount) || 0), 0);
+      const totalTithe = (incomeData || []).reduce((sum, item) => 
+        sum + (parseFloat(item.Tithe || item.TitheAmount) || 0), 0);
       
       const accountAge = user.CreationTime ? 
         Math.floor((new Date() - new Date(user.CreationTime)) / (1000 * 60 * 60 * 24)) : 0;
@@ -103,10 +135,10 @@ export default function ProfileScreen() {
     }
   };
 
-  const onRefresh = () => {
+  const onRefresh = useCallback(() => {
     setRefreshing(true);
     loadUserData();
-  };
+  }, []);
 
   const handleUpdateProfile = async () => {
     try {
@@ -117,7 +149,7 @@ export default function ProfileScreen() {
       if (result.success) {
         setShowEditModal(false);
         setSuccess('Profile updated successfully');
-        // Update local user context if needed
+        setTimeout(() => setSuccess(null), 3000);
       } else {
         setError('Failed to update profile');
       }
@@ -135,8 +167,8 @@ export default function ProfileScreen() {
       return;
     }
     
-    if (passwordForm.newPassword.length < 6) {
-      setError('Password must be at least 6 characters');
+    if (passwordForm.newPassword.length < 8 || passwordForm.newPassword.length > 16) {
+      setError('Password must be between 8 and 16 characters');
       return;
     }
 
@@ -153,6 +185,7 @@ export default function ProfileScreen() {
         setShowPasswordModal(false);
         setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
         setSuccess('Password changed successfully');
+        setTimeout(() => setSuccess(null), 3000);
       } else {
         setError('Failed to change password');
       }
@@ -162,6 +195,16 @@ export default function ProfileScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSaveTithePercentage = () => {
+    const percentage = parseFloat(titheInput);
+    if (isNaN(percentage) || percentage < 0 || percentage > 100) {
+      setError('Please enter a valid percentage (0-100)');
+      return;
+    }
+    saveTithePercentage(percentage);
+    setShowTitheModal(false);
   };
 
   const handleLogout = () => {
@@ -225,334 +268,493 @@ export default function ProfileScreen() {
   };
 
   return (
-    <ScrollView 
-      style={[styles.container, { backgroundColor: theme.background }]} 
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-    >
-      {/* Profile Header */}
-      <Card style={styles.profileCard}>
-        <Card.Content>
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 20, paddingBottom: 120 }]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />
+        }
+      >
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={[styles.headerTitle, { color: theme.text }]}>Profile</Text>
+        </View>
+
+        {/* Profile Card */}
+        <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <View style={styles.profileHeader}>
-            <Avatar.Text 
-              size={80} 
-              label={getInitials()}
-              style={styles.avatar}
-            />
+            <View style={[styles.avatar, { backgroundColor: theme.primary }]}>
+              <Text style={[styles.avatarText, { color: theme.textOnPrimary }]}>{getInitials()}</Text>
+            </View>
             <View style={styles.profileInfo}>
-              <Text variant="headlineMedium" style={styles.userName}>
+              <Text style={[styles.userName, { color: theme.text }]}>
                 {user?.FirstName && user?.LastName ? 
                   `${user.FirstName} ${user.LastName}` : 
                   user?.Username || 'User'}
               </Text>
-              <Text variant="bodyLarge" style={styles.userEmail}>
+              <Text style={[styles.userEmail, { color: theme.textSecondary }]}>
                 {user?.Email || 'No email'}
               </Text>
-              <Text variant="bodySmall" style={styles.memberSince}>
+              <Text style={[styles.memberSince, { color: theme.textDisabled }]}>
                 Member for {userStats.accountAge} days
               </Text>
             </View>
           </View>
           
           <View style={styles.profileActions}>
-            <Button 
-              mode="outlined" 
+            <TouchableOpacity 
+              style={[styles.actionButton, { borderColor: theme.primary }]}
               onPress={() => setShowEditModal(true)}
-              style={styles.actionButton}
             >
-              Edit Profile
-            </Button>
-            <Button 
-              mode="outlined" 
+              <Text style={[styles.actionButtonText, { color: theme.primary }]}>Edit Profile</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.actionButton, { borderColor: theme.primary }]}
               onPress={() => setShowPasswordModal(true)}
-              style={styles.actionButton}
             >
-              Change Password
-            </Button>
+              <Text style={[styles.actionButtonText, { color: theme.primary }]}>Change Password</Text>
+            </TouchableOpacity>
           </View>
-        </Card.Content>
-      </Card>
+        </View>
 
-      {/* Statistics */}
-      <Card style={styles.statsCard}>
-        <Card.Content>
-          <Text variant="titleLarge" style={styles.sectionTitle}>Account Statistics</Text>
+        {/* Statistics Card */}
+        <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Account Statistics</Text>
           
           <View style={styles.statRow}>
-            <Text variant="bodyLarge">Total Income</Text>
-            <Text variant="titleMedium" style={styles.positiveAmount}>
+            <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Total Income</Text>
+            <Text style={[styles.statValue, { color: theme.secondary }]}>
               {formatCurrency(userStats.totalIncome)}
             </Text>
           </View>
           
           <View style={styles.statRow}>
-            <Text variant="bodyLarge">Total Expenses</Text>
-            <Text variant="titleMedium" style={styles.negativeAmount}>
+            <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Total Expenses</Text>
+            <Text style={[styles.statValue, { color: theme.accent }]}>
               {formatCurrency(userStats.totalExpenses)}
             </Text>
           </View>
           
           <View style={styles.statRow}>
-            <Text variant="bodyLarge">Total Tithe</Text>
-            <Text variant="titleMedium" style={styles.titheAmount}>
+            <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Total Tithe</Text>
+            <Text style={[styles.statValue, { color: theme.warning }]}>
               {formatCurrency(userStats.totalTithe)}
             </Text>
           </View>
           
-          <Divider style={styles.divider} />
-          
-          <View style={styles.statRow}>
-            <Text variant="bodyLarge">Net Worth</Text>
-            <Text variant="titleLarge" style={[
-              styles.netWorth,
-              { color: (userStats.totalIncome - userStats.totalExpenses) >= 0 ? '#4caf50' : '#f44336' }
-            ]}>
-              {formatCurrency(userStats.totalIncome - userStats.totalExpenses)}
-            </Text>
-          </View>
-          
-          <Text variant="bodySmall" style={styles.lastActivity}>
+          <Text style={[styles.lastActivity, { color: theme.textDisabled }]}>
             Last activity: {formatDate(userStats.lastActivity)}
           </Text>
-        </Card.Content>
-      </Card>
+        </View>
 
-      {/* Settings */}
-      <Card style={styles.settingsCard}>
-        <Card.Content>
-          <Text variant="titleLarge" style={styles.sectionTitle}>Settings</Text>
+        {/* Settings Card */}
+        <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Settings</Text>
           
-          <List.Item
-            title="Notifications"
-            description="Receive budget alerts and reminders"
-            left={props => <List.Icon {...props} icon="bell" />}
-            right={() => (
-              <Switch
-                value={settings.notifications}
-                onValueChange={(value) => setSettings(prev => ({ ...prev, notifications: value }))}
-              />
-            )}
-          />
+          {/* Notifications Toggle */}
+          <View style={styles.settingRow}>
+            <View style={styles.settingInfo}>
+              <Text style={[styles.settingLabel, { color: theme.text }]}>Notifications</Text>
+              <Text style={[styles.settingDesc, { color: theme.textSecondary }]}>
+                Receive budget alerts and reminders
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={[
+                styles.toggle,
+                { backgroundColor: settings.notifications ? theme.primary : theme.surface }
+              ]}
+              onPress={() => setSettings(prev => ({ ...prev, notifications: !prev.notifications }))}
+            >
+              <View style={[
+                styles.toggleThumb,
+                { 
+                  backgroundColor: '#fff',
+                  transform: [{ translateX: settings.notifications ? 20 : 0 }]
+                }
+              ]} />
+            </TouchableOpacity>
+          </View>
           
-          <List.Item
-            title="Dark Mode"
-            description={`Current: ${themeMode} theme`}
-            left={props => <List.Icon {...props} icon="theme-light-dark" />}
-            right={() => (
-              <Switch
-                value={themeMode === 'dark'}
-                onValueChange={toggleTheme}
-              />
-            )}
-          />
+          {/* Dark Mode Toggle */}
+          <View style={styles.settingRow}>
+            <View style={styles.settingInfo}>
+              <Text style={[styles.settingLabel, { color: theme.text }]}>Dark Mode</Text>
+              <Text style={[styles.settingDesc, { color: theme.textSecondary }]}>
+                Current: {themeMode} theme
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={[
+                styles.toggle,
+                { backgroundColor: themeMode === 'dark' ? theme.primary : theme.surface }
+              ]}
+              onPress={toggleTheme}
+            >
+              <View style={[
+                styles.toggleThumb,
+                { 
+                  backgroundColor: '#fff',
+                  transform: [{ translateX: themeMode === 'dark' ? 20 : 0 }]
+                }
+              ]} />
+            </TouchableOpacity>
+          </View>
           
-          <List.Item
-            title="Auto Tithe Calculation"
-            description="Automatically calculate 10% tithe"
-            left={props => <List.Icon {...props} icon="calculator" />}
-            right={() => (
-              <Switch
-                value={settings.autoTithe}
-                onValueChange={(value) => setSettings(prev => ({ ...prev, autoTithe: value }))}
-              />
-            )}
-          />
-        </Card.Content>
-      </Card>
+          {/* Auto Tithe Toggle */}
+          <View style={styles.settingRow}>
+            <View style={styles.settingInfo}>
+              <Text style={[styles.settingLabel, { color: theme.text }]}>Auto Tithe Calculation</Text>
+              <Text style={[styles.settingDesc, { color: theme.textSecondary }]}>
+                Automatically calculate tithe
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={[
+                styles.toggle,
+                { backgroundColor: settings.autoTithe ? theme.primary : theme.surface }
+              ]}
+              onPress={() => setSettings(prev => ({ ...prev, autoTithe: !prev.autoTithe }))}
+            >
+              <View style={[
+                styles.toggleThumb,
+                { 
+                  backgroundColor: '#fff',
+                  transform: [{ translateX: settings.autoTithe ? 20 : 0 }]
+                }
+              ]} />
+            </TouchableOpacity>
+          </View>
 
-      {/* Account Actions */}
-      <Card style={styles.actionsCard}>
-        <Card.Content>
-          <Text variant="titleLarge" style={styles.sectionTitle}>Account Actions</Text>
+          {/* Tithe Percentage Setting */}
+          <TouchableOpacity 
+            style={styles.settingRow}
+            onPress={() => {
+              setTitheInput(settings.tithePercentage.toString());
+              setShowTitheModal(true);
+            }}
+          >
+            <View style={styles.settingInfo}>
+              <Text style={[styles.settingLabel, { color: theme.text }]}>Tithe Percentage</Text>
+              <Text style={[styles.settingDesc, { color: theme.textSecondary }]}>
+                Tap to change tithe percentage
+              </Text>
+            </View>
+            <View style={[styles.percentageBadge, { backgroundColor: theme.primary }]}>
+              <Text style={[styles.percentageText, { color: theme.textOnPrimary }]}>
+                {settings.tithePercentage}%
+              </Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+
+        {/* Account Actions Card */}
+        <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Account Actions</Text>
           
-          <Button 
-            mode="outlined" 
+          <TouchableOpacity 
+            style={[styles.actionButtonFull, { borderColor: theme.border }]}
             onPress={handleLogout}
-            icon="logout"
-            style={styles.logoutButton}
           >
-            Logout
-          </Button>
+            <Text style={styles.logoutIcon}>🚪</Text>
+            <Text style={[styles.actionButtonFullText, { color: theme.text }]}>Logout</Text>
+          </TouchableOpacity>
           
-          <Button 
-            mode="outlined" 
+          <TouchableOpacity 
+            style={[styles.actionButtonFull, styles.deleteButtonContainer, { borderColor: theme.error }]}
             onPress={handleDeleteAccount}
-            icon="delete"
-            style={styles.deleteButton}
-            textColor="#f44336"
           >
-            Delete Account
-          </Button>
-        </Card.Content>
-      </Card>
+            <Text style={styles.deleteIcon}>🗑️</Text>
+            <Text style={[styles.actionButtonFullText, { color: theme.error }]}>Delete Account</Text>
+          </TouchableOpacity>
+        </View>
 
-      {/* Error/Success Messages */}
-      {error && (
-        <Card style={styles.errorCard}>
-          <Card.Content>
-            <Text style={styles.errorText}>{error}</Text>
-            <Button onPress={() => setError(null)} mode="outlined">Dismiss</Button>
-          </Card.Content>
-        </Card>
-      )}
-      
-      {success && (
-        <Card style={styles.successCard}>
-          <Card.Content>
-            <Text style={styles.successText}>{success}</Text>
-            <Button onPress={() => setSuccess(null)} mode="outlined">Dismiss</Button>
-          </Card.Content>
-        </Card>
-      )}
+        {/* Error/Success Messages */}
+        {error && (
+          <View style={[styles.messageBanner, { backgroundColor: `${theme.error}20` }]}>
+            <Text style={[styles.messageText, { color: theme.error }]}>{error}</Text>
+            <TouchableOpacity onPress={() => setError(null)}>
+              <Text style={[styles.dismissText, { color: theme.error }]}>Dismiss</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        
+        {success && (
+          <View style={[styles.messageBanner, { backgroundColor: `${theme.secondary}20` }]}>
+            <Text style={[styles.messageText, { color: theme.secondary }]}>{success}</Text>
+            <TouchableOpacity onPress={() => setSuccess(null)}>
+              <Text style={[styles.dismissText, { color: theme.secondary }]}>Dismiss</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </ScrollView>
 
       {/* Edit Profile Modal */}
-      <Portal>
-        <Modal
-          visible={showEditModal}
-          onDismiss={() => setShowEditModal(false)}
-          contentContainerStyle={styles.modalContent}
+      <Modal visible={showEditModal} transparent animationType="slide">
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
         >
-          <Card>
-            <Card.Content>
-              <View style={styles.modalHeader}>
-                <Text variant="titleLarge">Edit Profile</Text>
-                <IconButton icon="close" onPress={() => setShowEditModal(false)} />
-              </View>
+          <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Edit Profile</Text>
+              <TouchableOpacity onPress={() => setShowEditModal(false)}>
+                <Text style={[styles.modalClose, { color: theme.textSecondary }]}>✕</Text>
+              </TouchableOpacity>
+            </View>
 
+            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+              <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Username</Text>
               <TextInput
-                label="Username"
+                style={[styles.modalInput, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.text }]}
                 value={editProfile.Username}
                 onChangeText={(text) => setEditProfile(prev => ({ ...prev, Username: text }))}
-                style={styles.input}
+                placeholderTextColor={theme.textDisabled}
               />
 
+              <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Email</Text>
               <TextInput
-                label="Email"
+                style={[styles.modalInput, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.text }]}
                 value={editProfile.Email}
                 onChangeText={(text) => setEditProfile(prev => ({ ...prev, Email: text }))}
-                style={styles.input}
                 keyboardType="email-address"
+                placeholderTextColor={theme.textDisabled}
               />
 
+              <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>First Name</Text>
               <TextInput
-                label="First Name"
+                style={[styles.modalInput, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.text }]}
                 value={editProfile.FirstName}
                 onChangeText={(text) => setEditProfile(prev => ({ ...prev, FirstName: text }))}
-                style={styles.input}
+                placeholderTextColor={theme.textDisabled}
               />
 
+              <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Last Name</Text>
               <TextInput
-                label="Last Name"
+                style={[styles.modalInput, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.text }]}
                 value={editProfile.LastName}
                 onChangeText={(text) => setEditProfile(prev => ({ ...prev, LastName: text }))}
-                style={styles.input}
+                placeholderTextColor={theme.textDisabled}
               />
+            </ScrollView>
 
-              <View style={styles.modalButtons}>
-                <Button mode="outlined" onPress={() => setShowEditModal(false)}>
-                  Cancel
-                </Button>
-                <Button 
-                  mode="contained" 
-                  onPress={handleUpdateProfile}
-                  loading={loading}
-                >
-                  Update Profile
-                </Button>
-              </View>
-            </Card.Content>
-          </Card>
-        </Modal>
-      </Portal>
+            <View style={[styles.modalFooter, { borderTopColor: theme.border }]}>
+              <TouchableOpacity
+                style={[styles.modalCancelButton, { borderColor: theme.border }]}
+                onPress={() => setShowEditModal(false)}
+              >
+                <Text style={[styles.modalCancelText, { color: theme.textSecondary }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalSaveButton, { backgroundColor: theme.primary }]}
+                onPress={handleUpdateProfile}
+                disabled={loading}
+              >
+                <Text style={[styles.modalSaveText, { color: theme.textOnPrimary }]}>
+                  {loading ? 'Saving...' : 'Update Profile'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
 
       {/* Change Password Modal */}
-      <Portal>
-        <Modal
-          visible={showPasswordModal}
-          onDismiss={() => setShowPasswordModal(false)}
-          contentContainerStyle={styles.modalContent}
+      <Modal visible={showPasswordModal} transparent animationType="slide">
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
         >
-          <Card>
-            <Card.Content>
-              <View style={styles.modalHeader}>
-                <Text variant="titleLarge">Change Password</Text>
-                <IconButton icon="close" onPress={() => setShowPasswordModal(false)} />
-              </View>
+          <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Change Password</Text>
+              <TouchableOpacity onPress={() => setShowPasswordModal(false)}>
+                <Text style={[styles.modalClose, { color: theme.textSecondary }]}>✕</Text>
+              </TouchableOpacity>
+            </View>
 
+            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+              <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Current Password</Text>
               <TextInput
-                label="Current Password"
+                style={[styles.modalInput, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.text }]}
                 value={passwordForm.currentPassword}
                 onChangeText={(text) => setPasswordForm(prev => ({ ...prev, currentPassword: text }))}
-                style={styles.input}
                 secureTextEntry
+                placeholderTextColor={theme.textDisabled}
               />
 
+              <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>New Password</Text>
               <TextInput
-                label="New Password"
+                style={[styles.modalInput, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.text }]}
                 value={passwordForm.newPassword}
                 onChangeText={(text) => setPasswordForm(prev => ({ ...prev, newPassword: text }))}
-                style={styles.input}
                 secureTextEntry
+                placeholderTextColor={theme.textDisabled}
               />
 
+              <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Confirm New Password</Text>
               <TextInput
-                label="Confirm New Password"
+                style={[styles.modalInput, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.text }]}
                 value={passwordForm.confirmPassword}
                 onChangeText={(text) => setPasswordForm(prev => ({ ...prev, confirmPassword: text }))}
-                style={styles.input}
                 secureTextEntry
+                placeholderTextColor={theme.textDisabled}
               />
+            </ScrollView>
 
-              <View style={styles.modalButtons}>
-                <Button mode="outlined" onPress={() => setShowPasswordModal(false)}>
-                  Cancel
-                </Button>
-                <Button 
-                  mode="contained" 
-                  onPress={handleChangePassword}
-                  loading={loading}
-                >
-                  Change Password
-                </Button>
+            <View style={[styles.modalFooter, { borderTopColor: theme.border }]}>
+              <TouchableOpacity
+                style={[styles.modalCancelButton, { borderColor: theme.border }]}
+                onPress={() => setShowPasswordModal(false)}
+              >
+                <Text style={[styles.modalCancelText, { color: theme.textSecondary }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalSaveButton, { backgroundColor: theme.primary }]}
+                onPress={handleChangePassword}
+                disabled={loading}
+              >
+                <Text style={[styles.modalSaveText, { color: theme.textOnPrimary }]}>
+                  {loading ? 'Changing...' : 'Change Password'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Tithe Percentage Modal */}
+      <Modal visible={showTitheModal} transparent animationType="slide">
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
+          <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Set Tithe Percentage</Text>
+              <TouchableOpacity onPress={() => setShowTitheModal(false)}>
+                <Text style={[styles.modalClose, { color: theme.textSecondary }]}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalBody}>
+              <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>
+                Enter your preferred tithe percentage
+              </Text>
+              <View style={styles.percentageInputRow}>
+                <TextInput
+                  style={[styles.percentageInput, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.text }]}
+                  value={titheInput}
+                  onChangeText={setTitheInput}
+                  keyboardType="decimal-pad"
+                  placeholder="10"
+                  placeholderTextColor={theme.textDisabled}
+                />
+                <Text style={[styles.percentSymbol, { color: theme.text }]}>%</Text>
               </View>
-            </Card.Content>
-          </Card>
-        </Modal>
-      </Portal>
-    </ScrollView>
+              <Text style={[styles.helperText, { color: theme.textDisabled }]}>
+                This will be used when auto-calculating tithe for new income entries.
+              </Text>
+              
+              {/* Quick select buttons */}
+              <View style={styles.quickSelectRow}>
+                {[5, 10, 15, 20].map((pct) => (
+                  <TouchableOpacity
+                    key={pct}
+                    style={[
+                      styles.quickSelectButton,
+                      { borderColor: theme.border },
+                      titheInput === pct.toString() && { backgroundColor: theme.primary, borderColor: theme.primary }
+                    ]}
+                    onPress={() => setTitheInput(pct.toString())}
+                  >
+                    <Text style={[
+                      styles.quickSelectText,
+                      { color: theme.textSecondary },
+                      titheInput === pct.toString() && { color: theme.textOnPrimary }
+                    ]}>{pct}%</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            <View style={[styles.modalFooter, { borderTopColor: theme.border }]}>
+              <TouchableOpacity
+                style={[styles.modalCancelButton, { borderColor: theme.border }]}
+                onPress={() => setShowTitheModal(false)}
+              >
+                <Text style={[styles.modalCancelText, { color: theme.textSecondary }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalSaveButton, { backgroundColor: theme.primary }]}
+                onPress={handleSaveTithePercentage}
+              >
+                <Text style={[styles.modalSaveText, { color: theme.textOnPrimary }]}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
   },
-  profileCard: {
-    margin: 16,
-    elevation: 2,
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    padding: 20,
+  },
+  header: {
+    marginBottom: 24,
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: '700',
+  },
+  card: {
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    borderWidth: 1,
   },
   profileHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 20,
   },
   avatar: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
     marginRight: 16,
-    backgroundColor: '#6200ee',
+  },
+  avatarText: {
+    fontSize: 28,
+    fontWeight: '700',
   },
   profileInfo: {
     flex: 1,
   },
   userName: {
-    fontWeight: 'bold',
+    fontSize: 20,
+    fontWeight: '700',
     marginBottom: 4,
   },
   userEmail: {
-    color: '#666',
+    fontSize: 14,
     marginBottom: 2,
   },
   memberSince: {
-    color: '#999',
+    fontSize: 12,
   },
   profileActions: {
     flexDirection: 'row',
@@ -560,96 +762,229 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
   },
-  statsCard: {
-    margin: 16,
-    marginTop: 0,
-    elevation: 2,
-  },
-  settingsCard: {
-    margin: 16,
-    marginTop: 0,
-    elevation: 2,
-  },
-  actionsCard: {
-    margin: 16,
-    marginTop: 0,
-    marginBottom: 32,
-    elevation: 2,
+  actionButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
     marginBottom: 16,
-    fontWeight: 'bold',
   },
   statRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(128,128,128,0.1)',
   },
-  positiveAmount: {
-    color: '#4caf50',
-    fontWeight: 'bold',
+  statLabel: {
+    fontSize: 15,
   },
-  negativeAmount: {
-    color: '#f44336',
-    fontWeight: 'bold',
-  },
-  titheAmount: {
-    color: '#ff9800',
-    fontWeight: 'bold',
-  },
-  netWorth: {
-    fontWeight: 'bold',
-  },
-  divider: {
-    marginVertical: 12,
+  statValue: {
+    fontSize: 17,
+    fontWeight: '600',
   },
   lastActivity: {
-    color: '#666',
+    fontSize: 12,
     textAlign: 'center',
+    marginTop: 16,
+  },
+  settingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(128,128,128,0.1)',
+  },
+  settingInfo: {
+    flex: 1,
+    marginRight: 16,
+  },
+  settingLabel: {
+    fontSize: 15,
+    fontWeight: '500',
+    marginBottom: 2,
+  },
+  settingDesc: {
+    fontSize: 13,
+  },
+  toggle: {
+    width: 50,
+    height: 30,
+    borderRadius: 15,
+    padding: 3,
+  },
+  toggleThumb: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+  },
+  percentageBadge: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  percentageText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  actionButtonFull: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 10,
+  },
+  actionButtonFullText: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  logoutIcon: {
+    fontSize: 18,
+  },
+  deleteIcon: {
+    fontSize: 18,
+  },
+  deleteButtonContainer: {
+    marginBottom: 0,
+  },
+  messageBanner: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 12,
     marginTop: 8,
   },
-  logoutButton: {
-    marginBottom: 8,
+  messageText: {
+    fontSize: 14,
+    flex: 1,
   },
-  deleteButton: {
-    borderColor: '#f44336',
+  dismissText: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 12,
   },
-  errorCard: {
-    margin: 16,
-    backgroundColor: '#ffebee',
-  },
-  errorText: {
-    color: '#c62828',
-    marginBottom: 8,
-  },
-  successCard: {
-    margin: 16,
-    backgroundColor: '#e8f5e8',
-  },
-  successText: {
-    color: '#2e7d32',
-    marginBottom: 8,
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: 'transparent',
-    padding: 20,
-    margin: 20,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '90%',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    padding: 20,
+    borderBottomWidth: 1,
   },
-  input: {
-    marginBottom: 12,
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
   },
-  modalButtons: {
+  modalClose: {
+    fontSize: 24,
+    padding: 4,
+  },
+  modalBody: {
+    padding: 20,
+    maxHeight: 400,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 8,
+    marginTop: 12,
+  },
+  modalInput: {
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+  },
+  modalFooter: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 20,
+    padding: 20,
     gap: 12,
+    borderTopWidth: 1,
+  },
+  modalCancelButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  modalCancelText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  modalSaveButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  modalSaveText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  percentageInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  percentageInput: {
+    flex: 1,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 24,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  percentSymbol: {
+    fontSize: 24,
+    fontWeight: '600',
+    marginLeft: 12,
+  },
+  helperText: {
+    fontSize: 13,
+    marginTop: 12,
+    textAlign: 'center',
+  },
+  quickSelectRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 10,
+    marginTop: 20,
+  },
+  quickSelectButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  quickSelectText: {
+    fontSize: 14,
+    fontWeight: '500',
   },
 });

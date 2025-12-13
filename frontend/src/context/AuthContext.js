@@ -1,42 +1,5 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
-// Web fallback for AsyncStorage
-const storage = {
-  getItem: async (key) => {
-    try {
-      return await AsyncStorage.getItem(key);
-    } catch (error) {
-      // Fallback to localStorage for web
-      if (typeof window !== 'undefined' && window.localStorage) {
-        return window.localStorage.getItem(key);
-      }
-      return null;
-    }
-  },
-  setItem: async (key, value) => {
-    try {
-      return await AsyncStorage.setItem(key, value);
-    } catch (error) {
-      // Fallback to localStorage for web
-      if (typeof window !== 'undefined' && window.localStorage) {
-        return window.localStorage.setItem(key, value);
-      }
-      throw error;
-    }
-  },
-  removeItem: async (key) => {
-    try {
-      return await AsyncStorage.removeItem(key);
-    } catch (error) {
-      // Fallback to localStorage for web
-      if (typeof window !== 'undefined' && window.localStorage) {
-        return window.localStorage.removeItem(key);
-      }
-      throw error;
-    }
-  }
-};
+import storage from '../utils/storage';
 import { authService } from '../services/apiService';
 
 const AuthContext = createContext();

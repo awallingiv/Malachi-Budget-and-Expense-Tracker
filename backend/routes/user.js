@@ -34,7 +34,7 @@ router.get('/:userId', [
   try {
     const { userId } = req.params;
 
-    const result = await executeStoredProcedure('sprb_GetUserById', {
+    const result = await executeStoredProcedure('spmb_GetUserById', {
       UserId: { type: sql.UniqueIdentifier, value: userId }
     });
 
@@ -78,7 +78,7 @@ router.put('/:userId', [
     const { userId } = req.params;
     const { Email, Name } = req.body;
 
-    const result = await executeStoredProcedure('sprb_UpdateUser', {
+    const result = await executeStoredProcedure('spmb_UpdateUser', {
       UserId: { type: sql.UniqueIdentifier, value: userId },
       Pass: { type: sql.VarChar(16), value: null }, // Don't update password here
       Email: { type: sql.VarChar(45), value: Email || null },
@@ -122,7 +122,7 @@ router.put('/:userId/password', [
     const { userId } = req.params;
     const { newPassword } = req.body;
 
-    const result = await executeStoredProcedure('sprb_UpdateUserPassword', {
+    const result = await executeStoredProcedure('spmb_UpdateUserPassword', {
       UserID: { type: sql.UniqueIdentifier, value: userId },
       NewPassword: { type: sql.VarChar(16), value: newPassword }
     });
@@ -160,7 +160,7 @@ router.delete('/:userId', [
   try {
     const { userId } = req.params;
 
-    const result = await executeStoredProcedure('sprb_DeleteUser', {
+    const result = await executeStoredProcedure('spmb_DeleteUser', {
       UserId: { type: sql.UniqueIdentifier, value: userId }
     });
 
@@ -197,7 +197,7 @@ router.get('/:userId/validation', [
   try {
     const { userId } = req.params;
 
-    const result = await executeStoredProcedure('sprb_GetValidationInfo', {
+    const result = await executeStoredProcedure('spmb_GetValidationInfo', {
       UserID: { type: sql.UniqueIdentifier, value: userId }
     });
 

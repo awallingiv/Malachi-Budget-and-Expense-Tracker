@@ -3,7 +3,7 @@ const sql = require('mssql');
 // Database configuration
 const dbConfig = {
   server: process.env.DB_SERVER || 'localhost',
-  database: process.env.DB_DATABASE || 'ReactBudget',
+  database: process.env.DB_DATABASE || 'MalachiBudget',
   ...(process.env.DB_USER && process.env.DB_PASSWORD ? {
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
