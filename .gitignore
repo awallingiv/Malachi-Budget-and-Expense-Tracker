@@ -6,9 +6,7 @@ yarn-error.log*
 frontend/node_modules/
 
 # Production Environment Files
-.env.production
-.env.local
-.env.*.local
+
 
 # Build outputs
 dist/
