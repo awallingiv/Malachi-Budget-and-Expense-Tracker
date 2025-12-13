@@ -27,9 +27,23 @@ const resolveApiBaseUrl = () => {
     return envOverride.replace(/\/$/, '');
   }
 
-  // Production builds (non-dev) use the production URL
+  // Production web builds use relative URL (nginx proxies /api to backend)
+  // But only if we're NOT on localhost (localhost means local testing of prod build)
+  if (!__DEV__ && Platform.OS === 'web') {
+    const isLocalhost = typeof window !== 'undefined' && 
+      (window.location?.hostname === 'localhost' || window.location?.hostname === '127.0.0.1');
+    
+    if (!isLocalhost) {
+      console.log('🚀 Production web mode - using relative /api URL');
+      return '/api';
+    }
+    console.log('🧪 Production build on localhost - using localhost:3002');
+    return 'http://localhost:3002/api';
+  }
+
+  // Production mobile builds use the full production URL
   if (!__DEV__) {
-    console.log('🚀 Production mode detected');
+    console.log('🚀 Production mobile mode - using full URL');
     return 'https://budget.austinwalling.dev/api';
   }
 

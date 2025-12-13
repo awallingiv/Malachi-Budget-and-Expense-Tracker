@@ -61,26 +61,6 @@ app.get('/health', async (req, res) => {
   }
 });
 
-
-// Health check endpoint
-app.get('/health', async (req, res) => {
-  try {
-    await testConnection();
-    res.json({ 
-      status: 'healthy', 
-      timestamp: new Date().toISOString(),
-      database: 'connected'
-    });
-  } catch (error) {
-    res.status(503).json({ 
-      status: 'unhealthy', 
-      timestamp: new Date().toISOString(),
-      database: 'disconnected',
-      error: error.message
-    });
-  }
-});
-
 // Email configuration test endpoint
 app.get('/api/test-email', async (req, res) => {
   try {
