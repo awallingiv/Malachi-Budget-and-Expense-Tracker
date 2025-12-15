@@ -18,7 +18,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
-import { useTheme } from '../context/ThemeContext';
+import { useTheme, THEME_PRESETS, BACKGROUND_PRESETS } from '../context/ThemeContext';
 import { budgetService } from '../services/apiService';
 import MobileFAB from '../components/MobileFAB';
 import MonthSelector from '../components/MonthSelector';
@@ -141,8 +141,20 @@ const CategorySelect = ({ value, options, onSelect, theme }) => {
 
 export default function MobileHomeScreen({ navigation }) {
   const { user } = useAuth();
-  const { theme, isDark, toggleTheme } = useTheme();
+  const {
+    theme,
+    isDark,
+    toggleTheme,
+    colors,
+    themePreset,
+    backgroundPreset,
+    changeThemePreset,
+    changeBackgroundPreset,
+  } = useTheme();
   const insets = useSafeAreaInsets();
+
+  // Settings modal state
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -433,10 +445,10 @@ export default function MobileHomeScreen({ navigation }) {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.background }]}>
+    <View style={[styles.container, { backgroundColor: colors?.background || theme.background }]}>
       {/* Background decorations */}
-      <View style={[styles.bgOrb1, { backgroundColor: theme.primary, opacity: isDark ? 0.08 : 0.06 }]} />
-      <View style={[styles.bgOrb2, { backgroundColor: theme.secondary, opacity: isDark ? 0.06 : 0.04 }]} />
+      <View style={[styles.bgOrb1, { backgroundColor: colors?.primary || theme.primary, opacity: colors?.orbOpacity || (isDark ? 0.08 : 0.06) }]} />
+      <View style={[styles.bgOrb2, { backgroundColor: colors?.secondary || theme.secondary, opacity: (colors?.orbOpacity || (isDark ? 0.08 : 0.06)) * 0.75 }]} />
 
       <ScrollView
         style={styles.scrollView}
@@ -449,20 +461,26 @@ export default function MobileHomeScreen({ navigation }) {
         {/* Header */}
         <View style={styles.header}>
           <View>
-            <Text style={[styles.greeting, { color: theme.textSecondary }]}>{getGreeting()},</Text>
-            <Text style={[styles.userName, { color: theme.text }]}>
+            <Text style={[styles.greeting, { color: colors?.textMuted || theme.textSecondary }]}>{getGreeting()},</Text>
+            <Text style={[styles.userName, { color: colors?.text || theme.text }]}>
               {user?.Name || user?.Username || 'User'}
             </Text>
           </View>
           <View style={styles.headerActions}>
             <TouchableOpacity
-              style={[styles.headerButton, { backgroundColor: theme.surface }]}
+              style={[styles.headerButton, { backgroundColor: colors?.inputBg || theme.surface }]}
               onPress={toggleTheme}
             >
               <Text style={styles.headerButtonIcon}>{isDark ? '☀️' : '🌙'}</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.headerButton, { backgroundColor: theme.surface }]}
+              style={[styles.headerButton, { backgroundColor: colors?.inputBg || theme.surface }]}
+              onPress={() => setShowSettingsModal(true)}
+            >
+              <Text style={styles.headerButtonIcon}>⚙️</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.headerButton, { backgroundColor: colors?.inputBg || theme.surface }]}
               onPress={loadAllData}
             >
               <Text style={styles.headerButtonIcon}>🔄</Text>
@@ -813,6 +831,102 @@ export default function MobileHomeScreen({ navigation }) {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* Settings Modal */}
+      <Modal visible={showSettingsModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors?.modalBg || theme.background }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: colors?.inputBorder || theme.border }]}>
+              <Text style={[styles.modalTitle, { color: colors?.text || theme.text }]}>⚙️ Settings</Text>
+              <TouchableOpacity onPress={() => setShowSettingsModal(false)}>
+                <Text style={[styles.modalClose, { color: colors?.textMuted || theme.textSecondary }]}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+              {/* Dark/Light Mode Toggle */}
+              <View style={styles.settingsSection}>
+                <Text style={[styles.settingsSectionTitle, { color: colors?.text || theme.text }]}>Appearance</Text>
+                <TouchableOpacity
+                  style={[styles.settingsRow, { backgroundColor: colors?.inputBg || theme.surface }]}
+                  onPress={toggleTheme}
+                >
+                  <Text style={[styles.settingsRowLabel, { color: colors?.text || theme.text }]}>
+                    {isDark ? '🌙 Dark Mode' : '☀️ Light Mode'}
+                  </Text>
+                  <View style={[styles.toggleSwitch, { backgroundColor: isDark ? (colors?.primary || theme.primary) : (colors?.inputBorder || theme.border) }]}>
+                    <View style={[styles.toggleKnob, { transform: [{ translateX: isDark ? 16 : 0 }] }]} />
+                  </View>
+                </TouchableOpacity>
+              </View>
+
+              {/* Theme Presets */}
+              <View style={styles.settingsSection}>
+                <Text style={[styles.settingsSectionTitle, { color: colors?.text || theme.text }]}>Theme</Text>
+                <View style={styles.themeGrid}>
+                  {Object.entries(THEME_PRESETS).map(([key, preset]) => (
+                    <TouchableOpacity
+                      key={key}
+                      style={[
+                        styles.themeOption,
+                        { borderColor: colors?.inputBorder || theme.border, backgroundColor: colors?.inputBg || theme.surface },
+                        themePreset === key && { borderColor: preset.colors.primary, borderWidth: 2 }
+                      ]}
+                      onPress={() => changeThemePreset(key)}
+                    >
+                      <View style={styles.themeColorRow}>
+                        <View style={[styles.themeColorDot, { backgroundColor: preset.colors.primary }]} />
+                        <View style={[styles.themeColorDot, { backgroundColor: preset.colors.secondary }]} />
+                        <View style={[styles.themeColorDot, { backgroundColor: preset.colors.accent }]} />
+                      </View>
+                      <Text style={[styles.themeOptionText, { color: colors?.text || theme.text }]} numberOfLines={1}>{preset.name}</Text>
+                      {themePreset === key && (
+                        <Text style={{ color: preset.colors.primary, fontSize: 12 }}>✓</Text>
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* Background Presets */}
+              <View style={styles.settingsSection}>
+                <Text style={[styles.settingsSectionTitle, { color: colors?.text || theme.text }]}>Background</Text>
+                <View style={styles.themeGrid}>
+                  {Object.entries(BACKGROUND_PRESETS).map(([key, bg]) => (
+                    <TouchableOpacity
+                      key={key}
+                      style={[
+                        styles.themeOption,
+                        { borderColor: colors?.inputBorder || theme.border, backgroundColor: colors?.inputBg || theme.surface },
+                        backgroundPreset === key && { borderColor: colors?.primary || theme.primary, borderWidth: 2 }
+                      ]}
+                      onPress={() => changeBackgroundPreset(key)}
+                    >
+                      <View style={styles.themeColorRow}>
+                        <View style={[styles.themeColorDot, { backgroundColor: bg.dark, borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' }]} />
+                        <View style={[styles.themeColorDot, { backgroundColor: bg.light, borderWidth: 1, borderColor: 'rgba(0,0,0,0.2)' }]} />
+                      </View>
+                      <Text style={[styles.themeOptionText, { color: colors?.text || theme.text }]} numberOfLines={1}>{bg.name}</Text>
+                      {backgroundPreset === key && (
+                        <Text style={{ color: colors?.primary || theme.primary, fontSize: 12 }}>✓</Text>
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            </ScrollView>
+
+            <View style={[styles.modalFooter, { borderTopColor: colors?.inputBorder || theme.border }]}>
+              <TouchableOpacity
+                style={[styles.modalSaveButton, { backgroundColor: colors?.primary || theme.primary }]}
+                onPress={() => setShowSettingsModal(false)}
+              >
+                <Text style={[styles.modalSaveText, { color: '#fff' }]}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1152,5 +1266,69 @@ const styles = StyleSheet.create({
   categoryChipText: {
     fontSize: 14,
     fontWeight: '500',
+  },
+  // Settings Modal Styles
+  settingsSection: {
+    marginBottom: 24,
+  },
+  settingsSectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 12,
+    letterSpacing: 0.5,
+  },
+  settingsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderRadius: 12,
+  },
+  settingsRowLabel: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  toggleSwitch: {
+    width: 44,
+    height: 26,
+    borderRadius: 13,
+    padding: 2,
+    justifyContent: 'center',
+  },
+  toggleKnob: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#fff',
+  },
+  themeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  themeOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    minWidth: '45%',
+    flex: 1,
+    gap: 8,
+  },
+  themeColorRow: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  themeColorDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+  },
+  themeOptionText: {
+    fontSize: 12,
+    fontWeight: '500',
+    flex: 1,
   },
 });

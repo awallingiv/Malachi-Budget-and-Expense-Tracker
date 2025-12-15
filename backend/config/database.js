@@ -123,7 +123,7 @@ const executeQuery = async (query, parameters = {}) => {
     // Add parameters to request
     Object.keys(parameters).forEach(key => {
       const param = parameters[key];
-      if (param.type && param.value !== undefined) {
+      if (param && typeof param === 'object' && param.type && param.value !== undefined) {
         request.input(key, param.type, param.value);
       } else {
         request.input(key, param);

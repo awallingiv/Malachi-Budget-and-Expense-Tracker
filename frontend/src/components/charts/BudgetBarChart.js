@@ -2,11 +2,16 @@ import React from 'react';
 import { View, StyleSheet, Dimensions, ScrollView } from 'react-native';
 import { Text, useTheme, Card, ProgressBar } from 'react-native-paper';
 import { BarChart } from 'react-native-chart-kit';
+import { useTheme as useAppTheme } from '../../context/ThemeContext';
 
 const BudgetBarChart = ({ data = [], title = 'Budget vs Actual', showPercentages = true }) => {
   const theme = useTheme();
+  const { colors: themeColors, isDark } = useAppTheme();
   const screenWidth = Dimensions.get('window').width;
   const chartWidth = Math.min(screenWidth - 40, 600);
+
+  // Get theme-aware text color
+  const textColor = themeColors?.chartText || (isDark ? '#FFFFFF' : '#1a1a2e');
 
   // Process and sort data by overspend amount
   const processedData = React.useMemo(() => {
@@ -52,21 +57,34 @@ const BudgetBarChart = ({ data = [], title = 'Budget vs Actual', showPercentages
 
   // Prepare data for bar chart (top 6 categories for readability)
   const topCategories = processedData.slice(0, 6);
-  
+
+  // Use theme colors with proper fallbacks
+  const primaryColor = themeColors?.primary || theme.colors.primary;
+  const gridColor = themeColors?.chartGrid || (isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)');
+
   const chartConfig = {
-    backgroundColor: theme.colors.surface,
-    backgroundGradientFrom: theme.colors.surface,
-    backgroundGradientTo: theme.colors.surface,
+    backgroundColor: themeColors?.cardBg || theme.colors.surface,
+    backgroundGradientFrom: themeColors?.cardBg || theme.colors.surface,
+    backgroundGradientTo: themeColors?.cardBg || theme.colors.surface,
     decimalPlaces: 0,
-    color: (opacity = 1) => theme.colors.primary.replace(')', `, ${opacity})`).replace('rgb', 'rgba'),
-    labelColor: (opacity = 1) => theme.dark ? `rgba(255, 255, 255, ${opacity})` : `rgba(0, 0, 0, ${opacity})`,
+    color: (opacity = 1) => {
+      // Handle hex colors properly
+      if (primaryColor.startsWith('#')) {
+        const r = parseInt(primaryColor.slice(1, 3), 16);
+        const g = parseInt(primaryColor.slice(3, 5), 16);
+        const b = parseInt(primaryColor.slice(5, 7), 16);
+        return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+      }
+      return primaryColor.replace(')', `, ${opacity})`).replace('rgb', 'rgba');
+    },
+    labelColor: (opacity = 1) => isDark ? `rgba(255, 255, 255, ${opacity})` : `rgba(0, 0, 0, ${opacity})`,
     style: {
       borderRadius: 16
     },
     barPercentage: 0.7,
     propsForBackgroundLines: {
       strokeDasharray: '',
-      stroke: theme.dark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+      stroke: gridColor,
     }
   };
 

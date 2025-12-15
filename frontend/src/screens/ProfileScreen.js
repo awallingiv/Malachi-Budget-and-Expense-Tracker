@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  View, 
+import {
+  View,
   Text,
-  StyleSheet, 
-  ScrollView, 
+  StyleSheet,
+  ScrollView,
   Alert,
   RefreshControl,
   TouchableOpacity,
@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
-import { useTheme } from '../context/ThemeContext';
+import { useTheme, THEME_PRESETS, BACKGROUND_PRESETS } from '../context/ThemeContext';
 import { budgetService } from '../services/apiService';
 import { Ionicons } from '@expo/vector-icons';
 import storage from '../utils/storage';
@@ -23,8 +23,21 @@ const TITHE_PERCENTAGE_KEY = '@tithe_percentage';
 
 export default function ProfileScreen() {
   const { user, logout } = useAuth();
-  const { theme, toggleTheme, themeMode } = useTheme();
+  const {
+    theme,
+    toggleTheme,
+    themeMode,
+    isDark,
+    colors,
+    themePreset,
+    backgroundPreset,
+    changeThemePreset,
+    changeBackgroundPreset,
+  } = useTheme();
   const insets = useSafeAreaInsets();
+
+  // Settings modal for theme customization
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -381,27 +394,45 @@ export default function ProfileScreen() {
           {/* Dark Mode Toggle */}
           <View style={styles.settingRow}>
             <View style={styles.settingInfo}>
-              <Text style={[styles.settingLabel, { color: theme.text }]}>Dark Mode</Text>
-              <Text style={[styles.settingDesc, { color: theme.textSecondary }]}>
+              <Text style={[styles.settingLabel, { color: colors?.text || theme.text }]}>Dark Mode</Text>
+              <Text style={[styles.settingDesc, { color: colors?.textMuted || theme.textSecondary }]}>
                 Current: {themeMode} theme
               </Text>
             </View>
             <TouchableOpacity
               style={[
                 styles.toggle,
-                { backgroundColor: themeMode === 'dark' ? theme.primary : theme.surface }
+                { backgroundColor: themeMode === 'dark' ? (colors?.primary || theme.primary) : (colors?.inputBg || theme.surface) }
               ]}
               onPress={toggleTheme}
             >
               <View style={[
                 styles.toggleThumb,
-                { 
+                {
                   backgroundColor: '#fff',
                   transform: [{ translateX: themeMode === 'dark' ? 20 : 0 }]
                 }
               ]} />
             </TouchableOpacity>
           </View>
+
+          {/* Theme Customization */}
+          <TouchableOpacity
+            style={styles.settingRow}
+            onPress={() => setShowSettingsModal(true)}
+          >
+            <View style={styles.settingInfo}>
+              <Text style={[styles.settingLabel, { color: colors?.text || theme.text }]}>🎨 Theme Customization</Text>
+              <Text style={[styles.settingDesc, { color: colors?.textMuted || theme.textSecondary }]}>
+                Customize colors and backgrounds
+              </Text>
+            </View>
+            <View style={styles.themePreviewRow}>
+              <View style={[styles.themePreviewDot, { backgroundColor: colors?.primary || theme.primary }]} />
+              <View style={[styles.themePreviewDot, { backgroundColor: colors?.secondary || theme.secondary }]} />
+              <View style={[styles.themePreviewDot, { backgroundColor: colors?.accent || theme.accent }]} />
+            </View>
+          </TouchableOpacity>
           
           {/* Auto Tithe Toggle */}
           <View style={styles.settingRow}>
@@ -697,6 +728,82 @@ export default function ProfileScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* Theme Settings Modal */}
+      <Modal visible={showSettingsModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors?.modalBg || theme.background }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: colors?.inputBorder || theme.border }]}>
+              <Text style={[styles.modalTitle, { color: colors?.text || theme.text }]}>🎨 Theme Settings</Text>
+              <TouchableOpacity onPress={() => setShowSettingsModal(false)}>
+                <Text style={[styles.modalClose, { color: colors?.textMuted || theme.textSecondary }]}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+              {/* Theme Presets */}
+              <View style={styles.themeSection}>
+                <Text style={[styles.themeSectionTitle, { color: colors?.text || theme.text }]}>Theme Colors</Text>
+                <View style={styles.themeGrid}>
+                  {Object.entries(THEME_PRESETS).map(([key, preset]) => (
+                    <TouchableOpacity
+                      key={key}
+                      style={[
+                        styles.themeGridOption,
+                        { borderColor: colors?.inputBorder || theme.border, backgroundColor: colors?.inputBg || theme.surface },
+                        themePreset === key && { borderColor: preset.colors.primary, borderWidth: 2 }
+                      ]}
+                      onPress={() => changeThemePreset(key)}
+                    >
+                      <View style={styles.themeColorRow}>
+                        <View style={[styles.themeColorDot, { backgroundColor: preset.colors.primary }]} />
+                        <View style={[styles.themeColorDot, { backgroundColor: preset.colors.secondary }]} />
+                        <View style={[styles.themeColorDot, { backgroundColor: preset.colors.accent }]} />
+                      </View>
+                      <Text style={[styles.themeGridOptionText, { color: colors?.text || theme.text }]} numberOfLines={1}>{preset.name}</Text>
+                      {themePreset === key && <Text style={{ color: preset.colors.primary }}>✓</Text>}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* Background Presets */}
+              <View style={styles.themeSection}>
+                <Text style={[styles.themeSectionTitle, { color: colors?.text || theme.text }]}>Background</Text>
+                <View style={styles.themeGrid}>
+                  {Object.entries(BACKGROUND_PRESETS).map(([key, bg]) => (
+                    <TouchableOpacity
+                      key={key}
+                      style={[
+                        styles.themeGridOption,
+                        { borderColor: colors?.inputBorder || theme.border, backgroundColor: colors?.inputBg || theme.surface },
+                        backgroundPreset === key && { borderColor: colors?.primary || theme.primary, borderWidth: 2 }
+                      ]}
+                      onPress={() => changeBackgroundPreset(key)}
+                    >
+                      <View style={styles.themeColorRow}>
+                        <View style={[styles.themeColorDot, { backgroundColor: bg.dark, borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' }]} />
+                        <View style={[styles.themeColorDot, { backgroundColor: bg.light, borderWidth: 1, borderColor: 'rgba(0,0,0,0.2)' }]} />
+                      </View>
+                      <Text style={[styles.themeGridOptionText, { color: colors?.text || theme.text }]} numberOfLines={1}>{bg.name}</Text>
+                      {backgroundPreset === key && <Text style={{ color: colors?.primary || theme.primary }}>✓</Text>}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            </ScrollView>
+
+            <View style={[styles.modalFooter, { borderTopColor: colors?.inputBorder || theme.border }]}>
+              <TouchableOpacity
+                style={[styles.modalSaveButton, { backgroundColor: colors?.primary || theme.primary }]}
+                onPress={() => setShowSettingsModal(false)}
+              >
+                <Text style={[styles.modalSaveText, { color: '#fff' }]}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -986,5 +1093,54 @@ const styles = StyleSheet.create({
   quickSelectText: {
     fontSize: 14,
     fontWeight: '500',
+  },
+  // Theme preview dots for settings row
+  themePreviewRow: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  themePreviewDot: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+  },
+  // Theme settings modal
+  themeSection: {
+    marginBottom: 24,
+  },
+  themeSectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  themeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  themeGridOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    minWidth: '45%',
+    flex: 1,
+    gap: 8,
+  },
+  themeColorRow: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  themeColorDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+  },
+  themeGridOptionText: {
+    fontSize: 12,
+    fontWeight: '500',
+    flex: 1,
   },
 });

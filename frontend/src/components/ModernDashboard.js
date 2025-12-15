@@ -2493,17 +2493,18 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: 20,
+    padding: screenWidth > 500 ? 20 : 12,
     maxWidth: Platform.OS === 'web' ? 1400 : '100%',
     alignSelf: 'center',
     width: '100%',
   },
   header: {
-    flexDirection: 'row',
+    flexDirection: screenWidth > 500 ? 'row' : 'column',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 30,
+    alignItems: screenWidth > 500 ? 'flex-start' : 'stretch',
+    marginBottom: screenWidth > 500 ? 30 : 20,
     paddingTop: Platform.OS === 'web' ? 20 : 50,
+    gap: screenWidth > 500 ? 0 : 16,
   },
   greeting: {
     fontSize: 16,
@@ -2517,8 +2518,10 @@ const styles = StyleSheet.create({
   },
   headerActions: {
     flexDirection: 'row',
-    gap: 12,
+    gap: screenWidth > 400 ? 12 : 8,
     alignItems: 'center',
+    flexWrap: 'wrap',
+    justifyContent: screenWidth > 500 ? 'flex-end' : 'flex-start',
   },
   refreshButton: {
     width: 40,
@@ -2664,16 +2667,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    marginHorizontal: -6,
+    marginHorizontal: screenWidth > 500 ? -6 : 0,
   },
   groupingHalfCard: {
-    width: '48%',
-    marginHorizontal: '1%',
+    width: screenWidth > 600 ? '48%' : '100%', // Full width on mobile
+    marginHorizontal: screenWidth > 600 ? '1%' : 0,
     marginBottom: 16,
   },
   groupingFullCard: {
-    width: '98%',
-    marginHorizontal: '1%',
+    width: screenWidth > 600 ? '98%' : '100%',
+    marginHorizontal: screenWidth > 600 ? '1%' : 0,
     marginBottom: 16,
   },
   addGroupingCard: {
@@ -2710,16 +2713,17 @@ const styles = StyleSheet.create({
   },
   // New consolidated financial summary styles
   financialSummaryCard: {
-    padding: 16,
+    padding: screenWidth > 500 ? 16 : 12,
   },
   financialSummaryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: screenWidth > 600 ? 'row' : 'column',
+    alignItems: screenWidth > 600 ? 'center' : 'stretch',
     gap: 16,
   },
   netPositionSection: {
     alignItems: 'center',
-    paddingRight: 16,
+    paddingRight: screenWidth > 600 ? 16 : 0,
+    paddingBottom: screenWidth > 600 ? 0 : 12,
   },
   netPositionLabel: {
     fontSize: 10,
@@ -2732,8 +2736,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   summaryDivider: {
-    width: 1,
-    height: 50,
+    width: screenWidth > 600 ? 1 : '100%',
+    height: screenWidth > 600 ? 50 : 1,
   },
   statsGridCompact: {
     flex: 1,
@@ -3634,43 +3638,43 @@ const styles = StyleSheet.create({
   suggestionText: {
     fontSize: 14,
   },
-  // Main Widget Grid Layout
+  // Main Widget Grid Layout - Responsive for mobile
   mainWidgetGrid: {
-    flexDirection: 'row',
+    flexDirection: screenWidth > 768 ? 'row' : 'column', // Stack on mobile
     gap: 16,
     marginBottom: 16,
   },
   leftWidgetColumn: {
-    flex: 1.2,
+    flex: screenWidth > 768 ? 1.2 : 1,
     gap: 16,
   },
   rightColumn: {
     flex: 1,
   },
   smallWidgetRow: {
-    flexDirection: 'row',
+    flexDirection: screenWidth > 500 ? 'row' : 'column', // Stack on very small screens
     gap: 16,
   },
   quarterWidgetCard: {
     flex: 1,
     padding: 12,
     borderRadius: 16,
-    minHeight: 200,
-    maxHeight: 400,
+    minHeight: screenWidth > 500 ? 200 : 150,
+    maxHeight: screenWidth > 500 ? 400 : 300,
     overflow: 'hidden',
   },
   incomeWidgetFull: {
     flex: 1,
     padding: 12,
     borderRadius: 16,
-    maxHeight: 450,
+    maxHeight: screenWidth > 768 ? 450 : 350,
     overflow: 'hidden',
   },
   spendingWidgetTall: {
     flex: 1,
     padding: 12,
     borderRadius: 16,
-    minHeight: 350,
+    minHeight: screenWidth > 768 ? 350 : 280,
   },
   // Settings Modal Styles
   settingsSection: {

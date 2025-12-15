@@ -2,11 +2,18 @@ import React from 'react';
 import { View, StyleSheet, Dimensions } from 'react-native';
 import { Text, useTheme, Card } from 'react-native-paper';
 import { LineChart } from 'react-native-chart-kit';
+import { useTheme as useAppTheme } from '../../context/ThemeContext';
 
 const TrendLineChart = ({ data = [], title = 'Spending Trends', showAverage = true }) => {
   const theme = useTheme();
+  const { colors: themeColors, isDark } = useAppTheme();
   const screenWidth = Dimensions.get('window').width;
   const chartWidth = Math.min(screenWidth - 40, 600);
+
+  // Get theme-aware colors
+  const textColor = themeColors?.chartText || (isDark ? '#FFFFFF' : '#1a1a2e');
+  const gridColor = themeColors?.chartGrid || (isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)');
+  const primaryColor = themeColors?.primary || theme.colors.primary;
 
   // Sort data by date and fill missing months
   const processedData = React.useMemo(() => {
@@ -50,26 +57,37 @@ const TrendLineChart = ({ data = [], title = 'Spending Trends', showAverage = tr
     );
   }
 
+  // Helper to convert hex to rgba
+  const hexToRgba = (hex, opacity) => {
+    if (hex.startsWith('#')) {
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+    }
+    return hex.replace(')', `, ${opacity})`).replace('rgb', 'rgba');
+  };
+
   const chartConfig = {
-    backgroundColor: theme.colors.surface,
-    backgroundGradientFrom: theme.colors.primaryContainer,
-    backgroundGradientTo: theme.colors.secondaryContainer,
+    backgroundColor: themeColors?.cardBg || theme.colors.surface,
+    backgroundGradientFrom: themeColors?.cardBg || theme.colors.primaryContainer,
+    backgroundGradientTo: themeColors?.cardBg || theme.colors.secondaryContainer,
     backgroundGradientFromOpacity: 0.2,
     backgroundGradientToOpacity: 0.1,
     decimalPlaces: 0,
-    color: (opacity = 1) => theme.colors.primary.replace(')', `, ${opacity})`).replace('rgb', 'rgba'),
-    labelColor: (opacity = 1) => theme.dark ? `rgba(255, 255, 255, ${opacity})` : `rgba(0, 0, 0, ${opacity})`,
+    color: (opacity = 1) => hexToRgba(primaryColor, opacity),
+    labelColor: (opacity = 1) => isDark ? `rgba(255, 255, 255, ${opacity})` : `rgba(0, 0, 0, ${opacity})`,
     style: {
       borderRadius: 16
     },
     propsForDots: {
       r: '5',
       strokeWidth: '2',
-      stroke: theme.colors.primary
+      stroke: primaryColor
     },
     propsForBackgroundLines: {
       strokeDasharray: '',
-      stroke: theme.dark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+      stroke: gridColor,
     }
   };
 
@@ -78,7 +96,7 @@ const TrendLineChart = ({ data = [], title = 'Spending Trends', showAverage = tr
     datasets: [
       {
         data: processedData.values,
-        color: (opacity = 1) => theme.colors.primary.replace(')', `, ${opacity})`).replace('rgb', 'rgba'),
+        color: (opacity = 1) => hexToRgba(primaryColor, opacity),
         strokeWidth: 3
       }
     ]
@@ -146,13 +164,13 @@ const TrendLineChart = ({ data = [], title = 'Spending Trends', showAverage = tr
 
         <View style={styles.legendContainer}>
           <View style={styles.legendItem}>
-            <View style={[styles.legendLine, { backgroundColor: theme.colors.primary }]} />
-            <Text variant="bodySmall">Monthly Spending</Text>
+            <View style={[styles.legendLine, { backgroundColor: primaryColor }]} />
+            <Text variant="bodySmall" style={{ color: textColor }}>Monthly Spending</Text>
           </View>
           {showAverage && (
             <View style={styles.legendItem}>
-              <View style={[styles.legendDash, { borderColor: theme.colors.outline }]} />
-              <Text variant="bodySmall">Average: ${processedData.average.toFixed(2)}</Text>
+              <View style={[styles.legendDash, { borderColor: themeColors?.textMuted || theme.colors.outline }]} />
+              <Text variant="bodySmall" style={{ color: textColor }}>Average: ${processedData.average.toFixed(2)}</Text>
             </View>
           )}
         </View>

@@ -2,6 +2,111 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useColorScheme } from 'react-native';
 import storage from '../utils/storage';
 
+// Theme presets - matching web ModernDashboard
+export const THEME_PRESETS = {
+  default: {
+    name: 'Default (Emerald)',
+    colors: {
+      primary: '#00d4aa',
+      secondary: '#ff6b6b',
+      accent: '#4ecdc4',
+      success: '#00d4aa',
+      warning: '#ffd93d',
+      danger: '#ff6b6b',
+      cardBorder: 'rgba(0, 212, 170, 0.4)',
+    }
+  },
+  ocean: {
+    name: 'Ocean Blue',
+    colors: {
+      primary: '#0066FF',
+      secondary: '#00B4D8',
+      accent: '#90E0EF',
+      success: '#00E676',
+      warning: '#FFB74D',
+      danger: '#FF5252',
+      cardBorder: 'rgba(0, 102, 255, 0.4)',
+    }
+  },
+  sunset: {
+    name: 'Sunset',
+    colors: {
+      primary: '#FF6B35',
+      secondary: '#F7931E',
+      accent: '#FFD93D',
+      success: '#6BCB77',
+      warning: '#FFE66D',
+      danger: '#FF4757',
+      cardBorder: 'rgba(255, 107, 53, 0.4)',
+    }
+  },
+  lavender: {
+    name: 'Lavender Dreams',
+    colors: {
+      primary: '#9B59B6',
+      secondary: '#E056FD',
+      accent: '#A29BFE',
+      success: '#00D4AA',
+      warning: '#FDCB6E',
+      danger: '#E74C3C',
+      cardBorder: 'rgba(155, 89, 182, 0.4)',
+    }
+  },
+  forest: {
+    name: 'Forest Green',
+    colors: {
+      primary: '#2ECC71',
+      secondary: '#27AE60',
+      accent: '#1ABC9C',
+      success: '#2ECC71',
+      warning: '#F39C12',
+      danger: '#E74C3C',
+      cardBorder: 'rgba(46, 204, 113, 0.4)',
+    }
+  },
+  midnight: {
+    name: 'Midnight',
+    colors: {
+      primary: '#5352ED',
+      secondary: '#70A1FF',
+      accent: '#7BED9F',
+      success: '#2ED573',
+      warning: '#FFA502',
+      danger: '#FF4757',
+      cardBorder: 'rgba(83, 82, 237, 0.4)',
+    }
+  },
+};
+
+// Background presets - matching web ModernDashboard
+export const BACKGROUND_PRESETS = {
+  default: {
+    name: 'Default',
+    dark: '#0a0f1a',
+    light: '#f8fafc',
+  },
+  midnight: {
+    name: 'Midnight Blue',
+    dark: '#0d1b2a',
+    light: '#e8f1f8',
+  },
+  charcoal: {
+    name: 'Charcoal',
+    dark: '#1a1a2e',
+    light: '#f5f5f5',
+  },
+  navy: {
+    name: 'Deep Navy',
+    dark: '#0a192f',
+    light: '#e6eef5',
+  },
+  graphite: {
+    name: 'Graphite',
+    dark: '#16161a',
+    light: '#fffffe',
+  },
+};
+
 // Modern Dark Theme Colors - Bleeding Edge Design
 export const THEMES = {
   dark: {
@@ -223,12 +328,44 @@ export const getPaperTheme = (theme) => ({
   }
 });
 
+// Helper to compute dynamic colors based on theme preset and background
+export const getColors = (isDark, themePreset = 'default', bgPreset = 'default') => {
+  const bg = BACKGROUND_PRESETS[bgPreset] || BACKGROUND_PRESETS.default;
+  const preset = THEME_PRESETS[themePreset] || THEME_PRESETS.default;
+  const background = isDark ? bg.dark : bg.light;
+
+  return {
+    background,
+    cardBg: isDark ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.02)',
+    cardBorder: preset.colors.cardBorder,
+    primary: preset.colors.primary,
+    secondary: preset.colors.secondary,
+    accent: preset.colors.accent,
+    success: preset.colors.success,
+    warning: preset.colors.warning,
+    danger: preset.colors.danger,
+    text: isDark ? '#ffffff' : '#1a1a2e',
+    textMuted: isDark ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.6)',
+    textDim: isDark ? 'rgba(255, 255, 255, 0.4)' : 'rgba(0, 0, 0, 0.4)',
+    inputBg: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)',
+    inputBorder: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+    modalBg: isDark ? bg.dark : '#ffffff',
+    orbOpacity: isDark ? 0.05 : 0.08,
+    // Chart-specific text colors that adapt to theme
+    chartText: isDark ? '#ffffff' : '#1a1a2e',
+    chartTextMuted: isDark ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.7)',
+    chartGrid: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+  };
+};
+
 const ThemeContext = createContext();
 
 export const ThemeProvider = ({ children }) => {
   const systemColorScheme = useColorScheme();
   const [themeMode, setThemeMode] = useState('dark'); // Default to dark mode
   const [currentTheme, setCurrentTheme] = useState(THEMES.dark);
+  const [themePreset, setThemePreset] = useState('default'); // Theme color preset
+  const [backgroundPreset, setBackgroundPreset] = useState('default'); // Background preset
 
   // Load theme preference from storage
   useEffect(() => {
@@ -238,14 +375,18 @@ export const ThemeProvider = ({ children }) => {
   // Update theme when mode changes
   useEffect(() => {
     updateTheme();
-  }, [themeMode, systemColorScheme]);
+  }, [themeMode, systemColorScheme, themePreset, backgroundPreset]);
 
   const loadThemePreference = async () => {
     try {
-      const savedTheme = await storage.getItem('themeMode');
-      if (savedTheme) {
-        setThemeMode(savedTheme);
-      }
+      const [savedTheme, savedPreset, savedBg] = await Promise.all([
+        storage.getItem('themeMode'),
+        storage.getItem('themePreset'),
+        storage.getItem('backgroundPreset'),
+      ]);
+      if (savedTheme) setThemeMode(savedTheme);
+      if (savedPreset) setThemePreset(savedPreset);
+      if (savedBg) setBackgroundPreset(savedBg);
     } catch (error) {
       console.error('Failed to load theme preference:', error);
     }
@@ -253,7 +394,7 @@ export const ThemeProvider = ({ children }) => {
 
   const updateTheme = () => {
     let selectedTheme;
-    
+
     switch (themeMode) {
       case 'light':
         selectedTheme = THEMES.light;
@@ -285,13 +426,43 @@ export const ThemeProvider = ({ children }) => {
     changeTheme(nextMode);
   };
 
+  const changeThemePreset = async (preset) => {
+    try {
+      setThemePreset(preset);
+      await storage.setItem('themePreset', preset);
+    } catch (error) {
+      console.error('Failed to save theme preset:', error);
+    }
+  };
+
+  const changeBackgroundPreset = async (preset) => {
+    try {
+      setBackgroundPreset(preset);
+      await storage.setItem('backgroundPreset', preset);
+    } catch (error) {
+      console.error('Failed to save background preset:', error);
+    }
+  };
+
+  // Compute isDark based on themeMode
+  const isDark = themeMode === 'dark' || (themeMode === 'auto' && systemColorScheme === 'dark');
+
+  // Get the computed colors using current presets
+  const colors = getColors(isDark, themePreset, backgroundPreset);
+
   const value = {
     theme: currentTheme,
     themeMode,
     changeTheme,
     toggleTheme,
-    isDark: themeMode === 'dark' || (themeMode === 'auto' && systemColorScheme === 'dark'),
-    paperTheme: getPaperTheme(currentTheme)
+    isDark,
+    paperTheme: getPaperTheme(currentTheme),
+    // New preset-related exports
+    themePreset,
+    backgroundPreset,
+    changeThemePreset,
+    changeBackgroundPreset,
+    colors, // Computed colors based on presets
   };
 
   return (
