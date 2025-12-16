@@ -41,10 +41,12 @@ export default function InsightsScreen() {
   const [trendError, setTrendError] = useState(null);
 
   useEffect(() => {
-    loadSummary();
-    loadBudgetData();
-    loadIncomeExpenseData();
-  }, [rangeMode]);
+    if (user?.UserId) {
+      loadSummary();
+      loadBudgetData();
+      loadIncomeExpenseData();
+    }
+  }, [rangeMode, user?.UserId]);
 
   const loadSummary = async () => {
     if (!user?.UserId) return;

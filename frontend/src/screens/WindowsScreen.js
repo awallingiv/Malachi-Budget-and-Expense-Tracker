@@ -50,8 +50,10 @@ export default function WindowsScreen() {
   const [createMode, setCreateMode] = useState('preset'); // 'preset' or 'custom'
 
   useEffect(() => {
-    loadWindows();
-  }, []);
+    if (user?.UserId) {
+      loadWindows();
+    }
+  }, [user?.UserId]);
 
   const loadWindows = async () => {
     try {

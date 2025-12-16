@@ -48,8 +48,10 @@ export default function BudgetsScreen() {
   });
 
   useEffect(() => {
-    loadData();
-  }, []);
+    if (user?.UserId) {
+      loadData();
+    }
+  }, [user?.UserId]);
 
   const loadData = async () => {
     if (!user?.UserId) return;

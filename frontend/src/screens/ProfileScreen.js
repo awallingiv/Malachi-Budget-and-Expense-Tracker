@@ -83,9 +83,11 @@ export default function ProfileScreen() {
   const [titheInput, setTitheInput] = useState('10');
 
   useEffect(() => {
-    loadUserData();
+    if (user?.UserId) {
+      loadUserData();
+    }
     loadTithePercentage();
-  }, []);
+  }, [user?.UserId]);
 
   const loadTithePercentage = async () => {
     try {

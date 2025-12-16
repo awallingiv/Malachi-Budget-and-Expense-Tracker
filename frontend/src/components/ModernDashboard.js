@@ -488,10 +488,12 @@ const ModernDashboard = () => {
   // Theme preferences are now loaded and saved via useDashboardPreferences hook
 
   useEffect(() => {
-    loadAllData();
+    if (user?.UserId) {
+      loadAllData();
+    }
     const timer = setInterval(() => setCurrentTime(new Date()), 60000);
     return () => clearInterval(timer);
-  }, [selectedMonth]);
+  }, [selectedMonth, user?.UserId]);
 
   const loadAllData = async () => {
     if (!user?.UserId) return;

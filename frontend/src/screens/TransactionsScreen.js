@@ -81,8 +81,10 @@ export default function TransactionsScreen() {
   });
 
   useEffect(() => {
-    loadData();
-  }, []);
+    if (user?.UserId) {
+      loadData();
+    }
+  }, [user?.UserId]);
 
   const loadData = async () => {
     try {

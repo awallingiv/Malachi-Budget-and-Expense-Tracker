@@ -54,8 +54,10 @@ export default function RecurringScreen() {
   });
 
   useEffect(() => {
-    loadData();
-  }, [type]);
+    if (user?.UserId) {
+      loadData();
+    }
+  }, [type, user?.UserId]);
 
   const loadData = async () => {
     if (!user?.UserId) return;

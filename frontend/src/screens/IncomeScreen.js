@@ -73,9 +73,11 @@ export default function IncomeScreen() {
   const [tithePercentage, setTithePercentage] = useState(10);
 
   useEffect(() => {
-    loadData();
+    if (user?.UserId) {
+      loadData();
+    }
     loadTithePercentage();
-  }, []);
+  }, [user?.UserId]);
 
   const loadTithePercentage = async () => {
     try {

@@ -196,11 +196,13 @@ export default function MobileHomeScreen({ navigation }) {
   const [tithePercentage, setTithePercentage] = useState(10);
 
   useEffect(() => {
-    loadAllData();
+    if (user?.UserId) {
+      loadAllData();
+    }
     loadTithePercentage();
     const timer = setInterval(() => setCurrentTime(new Date()), 60000);
     return () => clearInterval(timer);
-  }, []);
+  }, [user?.UserId]);
 
   const loadTithePercentage = async () => {
     try {
