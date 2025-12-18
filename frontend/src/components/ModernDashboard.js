@@ -1512,7 +1512,7 @@ const ModernDashboard = () => {
                   {topGroupingsList.slice(0, 4).map((grp) => (
                     <View key={grp.GroupingID} style={styles.compactRowTight}>
                       <Text style={[styles.compactLabelSmall, { color: colors.textMuted }]} numberOfLines={1}>
-                        {grp.Icon ? `${grp.Icon} ` : ''}{grp.GroupingName}
+                        {((grp.Icon && grp.Icon.trim()) ? grp.Icon : '📁')} {grp.GroupingName}
                       </Text>
                       <Text style={[styles.compactValueSmall, { color: colors.danger }]}>
                         {formatCurrency(grp.totalAmount)}

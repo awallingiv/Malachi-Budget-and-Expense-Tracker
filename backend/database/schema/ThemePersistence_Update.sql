@@ -1,11 +1,26 @@
 -- ReactBudget Theme Persistence & Preferences Update
 -- Run this file to add new columns and update stored procedures for theme persistence
 
--- 1. Add new columns to UserPreferences table
-ALTER TABLE UserPreferences
-ADD ThemePreset VARCHAR(30) DEFAULT 'default',
-    BackgroundPreset VARCHAR(30) DEFAULT 'default',
-    WidgetVisibility NVARCHAR(MAX) DEFAULT NULL;
+-- 1. Add new columns to UserPreferences table (only if they don't exist)
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('UserPreferences') AND name = 'ThemePreset')
+BEGIN
+    ALTER TABLE UserPreferences
+    ADD ThemePreset VARCHAR(30) DEFAULT 'default';
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('UserPreferences') AND name = 'BackgroundPreset')
+BEGIN
+    ALTER TABLE UserPreferences
+    ADD BackgroundPreset VARCHAR(30) DEFAULT 'default';
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('UserPreferences') AND name = 'WidgetVisibility')
+BEGIN
+    ALTER TABLE UserPreferences
+    ADD WidgetVisibility NVARCHAR(MAX) DEFAULT NULL;
+END
 GO
 
 -- 2. Update spmb_GetUserPreferences procedure

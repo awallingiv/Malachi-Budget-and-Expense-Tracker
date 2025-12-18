@@ -393,22 +393,49 @@ export const ThemeProvider = ({ children }) => {
   };
 
   const updateTheme = () => {
-    let selectedTheme;
+    let baseTheme;
 
     switch (themeMode) {
       case 'light':
-        selectedTheme = THEMES.light;
+        baseTheme = THEMES.light;
         break;
       case 'dark':
-        selectedTheme = THEMES.dark;
+        baseTheme = THEMES.dark;
         break;
       case 'auto':
-        selectedTheme = systemColorScheme === 'dark' ? THEMES.dark : THEMES.light;
+        baseTheme = systemColorScheme === 'dark' ? THEMES.dark : THEMES.light;
         break;
       default:
-        selectedTheme = THEMES.dark; // Default to dark
+        baseTheme = THEMES.dark; // Default to dark
     }
-    
+
+    // Merge theme preset colors into base theme
+    const preset = THEME_PRESETS[themePreset] || THEME_PRESETS.default;
+
+    // Helper to darken a color for gradient
+    const darkenColor = (hex) => {
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      const darkerR = Math.floor(r * 0.8);
+      const darkerG = Math.floor(g * 0.8);
+      const darkerB = Math.floor(b * 0.8);
+      return `#${darkerR.toString(16).padStart(2, '0')}${darkerG.toString(16).padStart(2, '0')}${darkerB.toString(16).padStart(2, '0')}`;
+    };
+
+    const selectedTheme = {
+      ...baseTheme,
+      primary: preset.colors.primary,
+      secondary: preset.colors.secondary,
+      accent: preset.colors.accent,
+      success: preset.colors.success,
+      warning: preset.colors.warning,
+      error: preset.colors.danger,
+      // Update gradients to use preset colors with darker shade
+      gradientPrimary: [preset.colors.primary, darkenColor(preset.colors.primary)],
+      gradientSecondary: [preset.colors.secondary, darkenColor(preset.colors.secondary)],
+    };
+
     setCurrentTheme(selectedTheme);
   };
 
