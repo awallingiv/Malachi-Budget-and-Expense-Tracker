@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, StyleSheet, Dimensions, ScrollView } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, StyleSheet, Dimensions, ScrollView, Platform } from 'react-native';
 import { Text, useTheme, Card } from 'react-native-paper';
 import { PieChart } from 'react-native-chart-kit';
 import { useTheme as useAppTheme } from '../../context/ThemeContext';
@@ -7,19 +7,40 @@ import { useTheme as useAppTheme } from '../../context/ThemeContext';
 const SpendingPieChart = ({ data = [], title = 'Spending Breakdown' }) => {
   const theme = useTheme();
   const { colors: themeColors, isDark } = useAppTheme();
-  const screenWidth = Dimensions.get('window').width;
-  const chartWidth = Math.min(screenWidth - 40, 400);
 
-  // Generate colors for pie chart - using theme-aware colors
+  // Track screen dimensions for responsive design
+  const [dimensions, setDimensions] = useState(Dimensions.get('window'));
+
+  useEffect(() => {
+    const subscription = Dimensions.addEventListener('change', ({ window }) => {
+      setDimensions(window);
+    });
+    return () => subscription?.remove();
+  }, []);
+
+  const screenWidth = dimensions.width;
+  const isMobile = screenWidth < 600;
+  const isSmallMobile = screenWidth < 400;
+
+  // More responsive chart sizing for mobile web
+  const chartWidth = isSmallMobile
+    ? screenWidth - 20
+    : isMobile
+      ? Math.min(screenWidth - 30, 350)
+      : Math.min(screenWidth - 40, 400);
+
+  const chartHeight = isSmallMobile ? 180 : isMobile ? 200 : 220;
+
+  // Generate colors for pie chart - using theme-aware colors with better contrast
   const chartColors = [
-    themeColors?.primary || '#FF6384',
-    themeColors?.secondary || '#36A2EB',
-    themeColors?.accent || '#FFCE56',
-    '#4BC0C0', '#9966FF',
-    '#FF9F40', '#FF6384', '#C9CBCF', '#4BC0C0', '#FF6384'
+    themeColors?.primary || '#00d4aa',
+    themeColors?.secondary || '#ff6b6b',
+    themeColors?.accent || '#4ecdc4',
+    '#ffd93d', '#9966FF',
+    '#FF9F40', '#45b7d1', '#96ceb4', '#a29bfe', '#fd79a8'
   ];
 
-  // Get the proper text color based on theme
+  // Get the proper text color based on theme - ensure high contrast
   const textColor = themeColors?.chartText || (isDark ? '#FFFFFF' : '#1a1a2e');
 
   // Transform data for chart library
@@ -66,36 +87,45 @@ const SpendingPieChart = ({ data = [], title = 'Spending Breakdown' }) => {
     <View style={styles.card}>
         {title ? <Text variant="titleMedium" style={[styles.title, { color: textColor }]}>{title}</Text> : null}
 
-        <View style={styles.chartContainer}>
+        <View style={[styles.chartContainer, isMobile && styles.chartContainerMobile]}>
           <PieChart
             data={chartData}
             width={chartWidth}
-            height={220}
+            height={chartHeight}
             chartConfig={chartConfig}
             accessor="amount"
             backgroundColor="transparent"
-            paddingLeft="0"
+            paddingLeft={isSmallMobile ? "-10" : "0"}
             absolute={false}
             hasLegend={false}
+            center={isSmallMobile ? [chartWidth / 4, 0] : [chartWidth / 5, 0]}
           />
         </View>
 
-        <ScrollView style={styles.legendContainer}>
+        <ScrollView style={[styles.legendContainer, isMobile && styles.legendContainerMobile]}>
           {chartData.map((item, index) => {
             const percentage = ((item.amount / total) * 100).toFixed(1);
             return (
-              <View key={index} style={[styles.legendItem, { borderBottomColor: themeColors?.chartGrid || (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)') }]}>
-                <View style={styles.legendRow}>
-                  <View style={[styles.colorBox, { backgroundColor: item.color }]} />
-                  <Text variant="bodyMedium" style={[styles.legendText, { color: textColor }]}>
+              <View key={index} style={[
+                styles.legendItem,
+                isMobile && styles.legendItemMobile,
+                { borderBottomColor: themeColors?.chartGrid || (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)') }
+              ]}>
+                <View style={[styles.legendRow, isMobile && styles.legendRowMobile]}>
+                  <View style={[styles.colorBox, isMobile && styles.colorBoxMobile, { backgroundColor: item.color }]} />
+                  <Text
+                    variant={isMobile ? "bodySmall" : "bodyMedium"}
+                    style={[styles.legendText, isMobile && styles.legendTextMobile, { color: textColor }]}
+                    numberOfLines={1}
+                  >
                     {item.name}
                   </Text>
                 </View>
-                <View style={styles.amountContainer}>
-                  <Text variant="bodyMedium" style={[styles.amount, { color: textColor }]}>
+                <View style={[styles.amountContainer, isMobile && styles.amountContainerMobile]}>
+                  <Text variant={isMobile ? "bodySmall" : "bodyMedium"} style={[styles.amount, isMobile && styles.amountMobile, { color: textColor }]}>
                     ${item.amount.toFixed(2)}
                   </Text>
-                  <Text variant="bodySmall" style={[styles.percentage, { color: themeColors?.textMuted || (isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.6)') }]}>
+                  <Text variant="bodySmall" style={[styles.percentage, isMobile && styles.percentageMobile, { color: themeColors?.textMuted || (isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.6)') }]}>
                     {percentage}%
                   </Text>
                 </View>
@@ -127,6 +157,12 @@ const styles = StyleSheet.create({
   chartContainer: {
     alignItems: 'center',
     marginVertical: 8,
+    overflow: 'hidden',
+  },
+  chartContainerMobile: {
+    marginVertical: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   emptyState: {
     alignItems: 'center',
@@ -137,6 +173,10 @@ const styles = StyleSheet.create({
     maxHeight: 200,
     marginTop: 16,
   },
+  legendContainerMobile: {
+    maxHeight: 160,
+    marginTop: 8,
+  },
   legendItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -145,10 +185,16 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(0,0,0,0.05)',
   },
+  legendItemMobile: {
+    paddingVertical: 6,
+  },
   legendRow: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
+  },
+  legendRowMobile: {
+    flex: 0.6,
   },
   colorBox: {
     width: 16,
@@ -156,18 +202,36 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     marginRight: 8,
   },
+  colorBoxMobile: {
+    width: 12,
+    height: 12,
+    borderRadius: 3,
+    marginRight: 6,
+  },
   legendText: {
     flex: 1,
+  },
+  legendTextMobile: {
+    fontSize: 12,
   },
   amountContainer: {
     alignItems: 'flex-end',
   },
+  amountContainerMobile: {
+    flex: 0.4,
+  },
   amount: {
     fontWeight: 'bold',
+  },
+  amountMobile: {
+    fontSize: 12,
   },
   percentage: {
     fontSize: 11,
     opacity: 0.7,
+  },
+  percentageMobile: {
+    fontSize: 10,
   },
   totalContainer: {
     flexDirection: 'row',

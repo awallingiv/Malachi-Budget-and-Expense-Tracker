@@ -467,6 +467,20 @@ const ModernDashboard = () => {
   // Chart widget collapsed state
   const [showSpendingChart, setShowSpendingChart] = useState(true);
 
+  // Track screen dimensions for responsive design on mobile web
+  const [dimensions, setDimensions] = useState(Dimensions.get('window'));
+
+  useEffect(() => {
+    const subscription = Dimensions.addEventListener('change', ({ window }) => {
+      setDimensions(window);
+    });
+    return () => subscription?.remove();
+  }, []);
+
+  // Responsive breakpoints
+  const isMobile = dimensions.width < 600;
+  const isSmallMobile = dimensions.width < 400;
+
   // Edit Grouping modal state (using shared editingGrouping from above)
   const [showEditGroupingModal, setShowEditGroupingModal] = useState(false);
   const [editGroupingForm, setEditGroupingForm] = useState({
@@ -1351,29 +1365,46 @@ const ModernDashboard = () => {
       <View style={[styles.backgroundOrb1, { opacity: colors.orbOpacity }]} />
       <View style={[styles.backgroundOrb2, { opacity: colors.orbOpacity * 0.6 }]} />
 
-      <ScrollView 
+      <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { padding: isMobile ? 12 : 20 }
+        ]}
         showsVerticalScrollIndicator={false}
       >
         {/* Header */}
-        <View style={styles.header}>
+        <View style={[
+          styles.header,
+          {
+            flexDirection: isMobile ? 'column' : 'row',
+            alignItems: isMobile ? 'stretch' : 'flex-start',
+            marginBottom: isMobile ? 20 : 30,
+            gap: isMobile ? 16 : 0,
+          }
+        ]}>
           <View>
-            <Text style={[styles.greeting, { color: colors.textMuted }]}>{getGreeting()},</Text>
-            <Text style={[styles.userName, { color: colors.text }]}>{user?.Name || user?.Username || 'User'}</Text>
+            <Text style={[styles.greeting, { color: colors.textMuted, fontSize: isMobile ? 14 : 16 }]}>{getGreeting()},</Text>
+            <Text style={[styles.userName, { color: colors.text, fontSize: isMobile ? 24 : 28 }]}>{user?.Name || user?.Username || 'User'}</Text>
           </View>
-          <View style={styles.headerActions}>
-            <TouchableOpacity style={[styles.refreshButton, { backgroundColor: colors.inputBg }]} onPress={loadAllData}>
-              <Text style={styles.refreshButtonText}>🔄</Text>
+          <View style={[
+            styles.headerActions,
+            {
+              gap: isSmallMobile ? 8 : 12,
+              justifyContent: isMobile ? 'flex-start' : 'flex-end',
+            }
+          ]}>
+            <TouchableOpacity style={[styles.refreshButton, { backgroundColor: colors.inputBg, width: isSmallMobile ? 36 : 40, height: isSmallMobile ? 36 : 40 }]} onPress={loadAllData}>
+              <Text style={[styles.refreshButtonText, { fontSize: isSmallMobile ? 16 : 18 }]}>🔄</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.refreshButton, { backgroundColor: colors.inputBg }]} onPress={toggleTheme}>
-              <Text style={styles.refreshButtonText}>{isDark ? '☀️' : '🌙'}</Text>
+            <TouchableOpacity style={[styles.refreshButton, { backgroundColor: colors.inputBg, width: isSmallMobile ? 36 : 40, height: isSmallMobile ? 36 : 40 }]} onPress={toggleTheme}>
+              <Text style={[styles.refreshButtonText, { fontSize: isSmallMobile ? 16 : 18 }]}>{isDark ? '☀️' : '🌙'}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.refreshButton, { backgroundColor: colors.inputBg }]} onPress={() => setShowSettingsModal(true)}>
-              <Text style={styles.refreshButtonText}>⚙️</Text>
+            <TouchableOpacity style={[styles.refreshButton, { backgroundColor: colors.inputBg, width: isSmallMobile ? 36 : 40, height: isSmallMobile ? 36 : 40 }]} onPress={() => setShowSettingsModal(true)}>
+              <Text style={[styles.refreshButtonText, { fontSize: isSmallMobile ? 16 : 18 }]}>⚙️</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.logoutButton, { borderColor: colors.inputBorder }]} onPress={logout}>
-              <Text style={[styles.logoutText, { color: colors.textMuted }]}>Sign Out</Text>
+            <TouchableOpacity style={[styles.logoutButton, { borderColor: colors.inputBorder, paddingHorizontal: isSmallMobile ? 12 : 16, paddingVertical: isSmallMobile ? 8 : 10 }]} onPress={logout}>
+              <Text style={[styles.logoutText, { color: colors.textMuted, fontSize: isSmallMobile ? 12 : 14 }]}>Sign Out</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1399,42 +1430,61 @@ const ModernDashboard = () => {
 
         {/* Consolidated Financial Summary */}
         {widgetVisibility.financialSummary && (
-        <AnimatedCard delay={0} cardStyle={dynamicStyles.card} style={styles.financialSummaryCard}>
-          <View style={styles.financialSummaryRow}>
+        <AnimatedCard delay={0} cardStyle={dynamicStyles.card} style={[styles.financialSummaryCard, { padding: isMobile ? 12 : 16 }]}>
+          <View style={[
+            styles.financialSummaryRow,
+            {
+              flexDirection: isMobile ? 'column' : 'row',
+              alignItems: isMobile ? 'stretch' : 'center',
+            }
+          ]}>
             {/* Net Position - Main Focus */}
-            <View style={styles.netPositionSection}>
-              <Text style={[styles.netPositionLabel, { color: colors.textMuted }]}>NET POSITION</Text>
-              <Text style={[styles.netPositionValue, { color: netPosition >= 0 ? colors.success : colors.danger }]}>
+            <View style={[
+              styles.netPositionSection,
+              {
+                paddingRight: isMobile ? 0 : 16,
+                paddingBottom: isMobile ? 12 : 0,
+              }
+            ]}>
+              <Text style={[styles.netPositionLabel, { color: colors.textMuted, fontSize: isSmallMobile ? 9 : 10 }]}>NET POSITION</Text>
+              <Text style={[styles.netPositionValue, { color: netPosition >= 0 ? colors.success : colors.danger, fontSize: isSmallMobile ? 22 : isMobile ? 24 : 28 }]}>
                 {formatCurrency(netPosition)}
               </Text>
             </View>
             {/* Divider */}
-            <View style={[styles.summaryDivider, { backgroundColor: colors.cardBorder }]} />
+            <View style={[
+              styles.summaryDivider,
+              {
+                backgroundColor: colors.cardBorder,
+                width: isMobile ? '100%' : 1,
+                height: isMobile ? 1 : 50,
+              }
+            ]} />
             {/* Stats Grid - Order: Gross | Net | Tithe Owed | Tithe Paid | Expenses | Savings */}
-            <View style={styles.statsGridCompact}>
-              <View style={styles.statItemCompact}>
-                <Text style={[styles.statLabelCompact, { color: colors.textDim }]}>Gross</Text>
-                <Text style={[styles.statValueCompact, { color: colors.text }]}>{formatCurrency(totalGross)}</Text>
+            <View style={[styles.statsGridCompact, { gap: isSmallMobile ? 6 : 8 }]}>
+              <View style={[styles.statItemCompact, { minWidth: isSmallMobile ? '28%' : '30%' }]}>
+                <Text style={[styles.statLabelCompact, { color: colors.textDim, fontSize: isSmallMobile ? 8 : 9 }]}>Gross</Text>
+                <Text style={[styles.statValueCompact, { color: colors.text, fontSize: isSmallMobile ? 12 : 14 }]}>{formatCurrency(totalGross)}</Text>
               </View>
-              <View style={styles.statItemCompact}>
-                <Text style={[styles.statLabelCompact, { color: colors.textDim }]}>Net</Text>
-                <Text style={[styles.statValueCompact, { color: colors.success }]}>{formatCurrency(totalNet)}</Text>
+              <View style={[styles.statItemCompact, { minWidth: isSmallMobile ? '28%' : '30%' }]}>
+                <Text style={[styles.statLabelCompact, { color: colors.textDim, fontSize: isSmallMobile ? 8 : 9 }]}>Net</Text>
+                <Text style={[styles.statValueCompact, { color: colors.success, fontSize: isSmallMobile ? 12 : 14 }]}>{formatCurrency(totalNet)}</Text>
               </View>
-              <View style={styles.statItemCompact}>
-                <Text style={[styles.statLabelCompact, { color: colors.textDim }]}>Tithe Owed</Text>
-                <Text style={[styles.statValueCompact, { color: colors.accent }]}>{formatCurrency(totalTitheOwed)}</Text>
+              <View style={[styles.statItemCompact, { minWidth: isSmallMobile ? '28%' : '30%' }]}>
+                <Text style={[styles.statLabelCompact, { color: colors.textDim, fontSize: isSmallMobile ? 8 : 9 }]}>Tithe Owed</Text>
+                <Text style={[styles.statValueCompact, { color: colors.accent, fontSize: isSmallMobile ? 12 : 14 }]}>{formatCurrency(totalTitheOwed)}</Text>
               </View>
-              <View style={styles.statItemCompact}>
-                <Text style={[styles.statLabelCompact, { color: colors.textDim }]}>Tithe Paid</Text>
-                <Text style={[styles.statValueCompact, { color: colors.success }]}>{formatCurrency(totalTithePaid)}</Text>
+              <View style={[styles.statItemCompact, { minWidth: isSmallMobile ? '28%' : '30%' }]}>
+                <Text style={[styles.statLabelCompact, { color: colors.textDim, fontSize: isSmallMobile ? 8 : 9 }]}>Tithe Paid</Text>
+                <Text style={[styles.statValueCompact, { color: colors.success, fontSize: isSmallMobile ? 12 : 14 }]}>{formatCurrency(totalTithePaid)}</Text>
               </View>
-              <View style={styles.statItemCompact}>
-                <Text style={[styles.statLabelCompact, { color: colors.textDim }]}>Expenses</Text>
-                <Text style={[styles.statValueCompact, { color: colors.danger }]}>{formatCurrency(totalExpenses)}</Text>
+              <View style={[styles.statItemCompact, { minWidth: isSmallMobile ? '28%' : '30%' }]}>
+                <Text style={[styles.statLabelCompact, { color: colors.textDim, fontSize: isSmallMobile ? 8 : 9 }]}>Expenses</Text>
+                <Text style={[styles.statValueCompact, { color: colors.danger, fontSize: isSmallMobile ? 12 : 14 }]}>{formatCurrency(totalExpenses)}</Text>
               </View>
-              <View style={styles.statItemCompact}>
-                <Text style={[styles.statLabelCompact, { color: colors.textDim }]}>Savings</Text>
-                <Text style={[styles.statValueCompact, { color: savingsRate >= 20 ? colors.success : savingsRate >= 10 ? colors.warning : colors.danger }]}>
+              <View style={[styles.statItemCompact, { minWidth: isSmallMobile ? '28%' : '30%' }]}>
+                <Text style={[styles.statLabelCompact, { color: colors.textDim, fontSize: isSmallMobile ? 8 : 9 }]}>Savings</Text>
+                <Text style={[styles.statValueCompact, { color: savingsRate >= 20 ? colors.success : savingsRate >= 10 ? colors.warning : colors.danger, fontSize: isSmallMobile ? 12 : 14 }]}>
                   {Math.max(0, savingsRate).toFixed(0)}%
                 </Text>
               </View>
@@ -1444,15 +1494,21 @@ const ModernDashboard = () => {
         )}
 
         {/* Main Widget Grid - New Layout: Left column (groupings, categories, income) + Right column (spending) */}
-        <View style={styles.mainWidgetGrid}>
+        <View style={[
+          styles.mainWidgetGrid,
+          {
+            flexDirection: isMobile ? 'column' : 'row',
+            gap: isMobile ? 12 : 16,
+          }
+        ]}>
           {/* Left Column */}
-          <View style={styles.leftWidgetColumn}>
+          <View style={[styles.leftWidgetColumn, { flex: isMobile ? 1 : 1.2, gap: isMobile ? 12 : 16 }]}>
             {/* Top Row: Groupings + Categories */}
-            <View style={styles.smallWidgetRow}>
+            <View style={[styles.smallWidgetRow, { flexDirection: isSmallMobile ? 'column' : 'row', gap: isMobile ? 12 : 16 }]}>
               {/* Top Groupings */}
               {widgetVisibility.topGroupings && topGroupingsList.length > 0 && (
-                <AnimatedCard delay={130} cardStyle={dynamicStyles.card} style={styles.quarterWidgetCard}>
-                  <Text style={[styles.compactWidgetTitle, { color: colors.text }]}>📁 Top Groupings</Text>
+                <AnimatedCard delay={130} cardStyle={dynamicStyles.card} style={[styles.quarterWidgetCard, { padding: isMobile ? 10 : 12, minHeight: isSmallMobile ? 130 : isMobile ? 150 : 200 }]}>
+                  <Text style={[styles.compactWidgetTitle, { color: colors.text, fontSize: isSmallMobile ? 10 : 11 }]}>📁 Top Groupings</Text>
                   {topGroupingsList.slice(0, 4).map((grp) => (
                     <View key={grp.GroupingID} style={styles.compactRowTight}>
                       <Text style={[styles.compactLabelSmall, { color: colors.textMuted }]} numberOfLines={1}>
@@ -1468,7 +1524,7 @@ const ModernDashboard = () => {
 
               {/* Categories by Group */}
               {widgetVisibility.categoriesByGroup && (
-                <AnimatedCard delay={140} cardStyle={dynamicStyles.card} style={styles.quarterWidgetCard}>
+                <AnimatedCard delay={140} cardStyle={dynamicStyles.card} style={[styles.quarterWidgetCard, { padding: isMobile ? 10 : 12, minHeight: isSmallMobile ? 130 : isMobile ? 150 : 200 }]}>
                   <View style={styles.inlineTitleRow}>
                     <Text style={[styles.compactWidgetTitle, { color: colors.text }]}>📊</Text>
                     <TouchableOpacity
@@ -1511,7 +1567,7 @@ const ModernDashboard = () => {
 
             {/* Income Widget */}
             {widgetVisibility.income && (
-              <AnimatedCard delay={145} cardStyle={dynamicStyles.card} style={styles.incomeWidgetFull}>
+              <AnimatedCard delay={145} cardStyle={dynamicStyles.card} style={[styles.incomeWidgetFull, { padding: isMobile ? 10 : 12, maxHeight: isMobile ? 300 : 450 }]}>
                 <View style={styles.listHeader}>
                   <Text style={[styles.sectionTitle, { color: colors.text }]}>💵 Income</Text>
                   <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -1538,7 +1594,7 @@ const ModernDashboard = () => {
 
           {/* Right Column - Spending Chart */}
           {widgetVisibility.spending && categoryList.length > 0 && (
-            <AnimatedCard delay={150} cardStyle={dynamicStyles.card} style={styles.spendingWidgetTall}>
+            <AnimatedCard delay={150} cardStyle={dynamicStyles.card} style={[styles.spendingWidgetTall, { padding: isMobile ? 10 : 12, minHeight: isMobile ? 250 : 350 }]}>
               <TouchableOpacity 
                 style={styles.chartHeader} 
                 onPress={() => setShowSpendingChart(!showSpendingChart)}
@@ -1626,15 +1682,21 @@ const ModernDashboard = () => {
                 ))}
               </View>
             ) : (
-              <View style={styles.groupingsGrid}>
+              <View style={[styles.groupingsGrid, { marginHorizontal: isMobile ? 0 : -6 }]}>
                 {sortedGroupings.map((grouping, index) => {
                   const isExpanded = expandedGroupings.includes(grouping.GroupingID);
                   return (
-                    <AnimatedCard 
-                      key={grouping.GroupingID} 
-                      delay={150 + (index * 30)} 
-                      cardStyle={dynamicStyles.card} 
-                      style={isExpanded ? styles.groupingFullCard : styles.groupingHalfCard}
+                    <AnimatedCard
+                      key={grouping.GroupingID}
+                      delay={150 + (index * 30)}
+                      cardStyle={dynamicStyles.card}
+                      style={[
+                        isExpanded ? styles.groupingFullCard : styles.groupingHalfCard,
+                        {
+                          width: isMobile ? '100%' : (isExpanded ? '98%' : '48%'),
+                          marginHorizontal: isMobile ? 0 : '1%',
+                        }
+                      ]}
                     >
                       <GroupingCard
                         grouping={grouping}

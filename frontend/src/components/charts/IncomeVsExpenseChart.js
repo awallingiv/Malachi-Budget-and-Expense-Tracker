@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, StyleSheet, Dimensions } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, StyleSheet, Dimensions, Platform } from 'react-native';
 import { Text, useTheme, Card } from 'react-native-paper';
 import { BarChart } from 'react-native-chart-kit';
 import { useTheme as useAppTheme } from '../../context/ThemeContext';
@@ -7,10 +7,31 @@ import { useTheme as useAppTheme } from '../../context/ThemeContext';
 const IncomeVsExpenseChart = ({ data = [], title = 'Income vs Expenses', showSavings = true }) => {
   const theme = useTheme();
   const { colors: themeColors, isDark } = useAppTheme();
-  const screenWidth = Dimensions.get('window').width;
-  const chartWidth = Math.min(screenWidth - 40, 600);
 
-  // Get theme-aware text color
+  // Track screen dimensions for responsive design
+  const [dimensions, setDimensions] = useState(Dimensions.get('window'));
+
+  useEffect(() => {
+    const subscription = Dimensions.addEventListener('change', ({ window }) => {
+      setDimensions(window);
+    });
+    return () => subscription?.remove();
+  }, []);
+
+  const screenWidth = dimensions.width;
+  const isMobile = screenWidth < 600;
+  const isSmallMobile = screenWidth < 400;
+
+  // Responsive chart sizing
+  const chartWidth = isSmallMobile
+    ? screenWidth - 20
+    : isMobile
+      ? Math.min(screenWidth - 30, 500)
+      : Math.min(screenWidth - 40, 600);
+
+  const chartHeight = isSmallMobile ? 200 : isMobile ? 230 : 260;
+
+  // Get theme-aware text color with high contrast
   const textColor = themeColors?.chartText || (isDark ? '#FFFFFF' : '#1a1a2e');
   const gridColor = themeColors?.chartGrid || (isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)');
 
@@ -40,14 +61,14 @@ const IncomeVsExpenseChart = ({ data = [], title = 'Income vs Expenses', showSav
   // Handle empty data state
   if (!data || data.length === 0 || processedData.income.length === 0) {
     return (
-      <Card style={styles.card}>
+      <Card style={[styles.card, isMobile && styles.cardMobile]}>
         <Card.Content>
-          <Text variant="titleMedium" style={styles.title}>{title}</Text>
+          <Text variant={isMobile ? "titleSmall" : "titleMedium"} style={[styles.title, { color: textColor }]}>{title}</Text>
           <View style={styles.emptyState}>
-            <Text variant="bodyLarge" style={{ color: theme.colors.onSurfaceVariant }}>
+            <Text variant="bodyLarge" style={{ color: themeColors?.textMuted || theme.colors.onSurfaceVariant }}>
               No income/expense data available
             </Text>
-            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginTop: 8 }}>
+            <Text variant="bodySmall" style={{ color: themeColors?.textDim || theme.colors.onSurfaceVariant, marginTop: 8 }}>
               Add income and expenses to see comparisons
             </Text>
           </View>
@@ -113,34 +134,38 @@ const IncomeVsExpenseChart = ({ data = [], title = 'Income vs Expenses', showSav
   const currentExpenses = processedData.expenses[processedData.expenses.length - 1];
   const currentSavings = currentIncome - currentExpenses;
 
+  // Use theme-aware success/danger colors
+  const successColor = themeColors?.success || '#4CAF50';
+  const dangerColor = themeColors?.danger || '#F44336';
+
   return (
-    <Card style={styles.card}>
-      <Card.Content>
-        <Text variant="titleMedium" style={styles.title}>{title}</Text>
-        
+    <Card style={[styles.card, isMobile && styles.cardMobile]}>
+      <Card.Content style={isMobile && styles.cardContentMobile}>
+        <Text variant={isMobile ? "titleSmall" : "titleMedium"} style={[styles.title, { color: textColor }]}>{title}</Text>
+
         {/* Current Month Summary */}
-        <View style={styles.summaryContainer}>
-          <Text variant="titleSmall" style={styles.sectionTitle}>Current Month</Text>
-          <View style={styles.statsGrid}>
+        <View style={[styles.summaryContainer, isMobile && styles.summaryContainerMobile, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)' }]}>
+          <Text variant={isMobile ? "bodyMedium" : "titleSmall"} style={[styles.sectionTitle, { color: textColor }]}>Current Month</Text>
+          <View style={[styles.statsGrid, isMobile && styles.statsGridMobile]}>
             <View style={styles.statBox}>
-              <Text variant="bodySmall" style={styles.statLabel}>Income</Text>
-              <Text variant="titleMedium" style={[styles.statValue, { color: '#4CAF50' }]}>
+              <Text variant="bodySmall" style={[styles.statLabel, { color: themeColors?.textMuted || theme.colors.onSurfaceVariant }]}>Income</Text>
+              <Text variant={isMobile ? "titleSmall" : "titleMedium"} style={[styles.statValue, { color: successColor }]}>
                 ${currentIncome.toFixed(2)}
               </Text>
             </View>
             <View style={styles.statBox}>
-              <Text variant="bodySmall" style={styles.statLabel}>Expenses</Text>
-              <Text variant="titleMedium" style={[styles.statValue, { color: '#F44336' }]}>
+              <Text variant="bodySmall" style={[styles.statLabel, { color: themeColors?.textMuted || theme.colors.onSurfaceVariant }]}>Expenses</Text>
+              <Text variant={isMobile ? "titleSmall" : "titleMedium"} style={[styles.statValue, { color: dangerColor }]}>
                 ${currentExpenses.toFixed(2)}
               </Text>
             </View>
             <View style={styles.statBox}>
-              <Text variant="bodySmall" style={styles.statLabel}>Net</Text>
-              <Text 
-                variant="titleMedium" 
+              <Text variant="bodySmall" style={[styles.statLabel, { color: themeColors?.textMuted || theme.colors.onSurfaceVariant }]}>Net</Text>
+              <Text
+                variant={isMobile ? "titleSmall" : "titleMedium"}
                 style={[
-                  styles.statValue, 
-                  { color: currentSavings >= 0 ? '#4CAF50' : '#F44336' }
+                  styles.statValue,
+                  { color: currentSavings >= 0 ? successColor : dangerColor }
                 ]}
               >
                 {currentSavings >= 0 ? '+' : ''}${currentSavings.toFixed(2)}
@@ -150,90 +175,93 @@ const IncomeVsExpenseChart = ({ data = [], title = 'Income vs Expenses', showSav
         </View>
 
         {/* Bar Chart */}
-        <View style={styles.chartContainer}>
+        <View style={[styles.chartContainer, isMobile && styles.chartContainerMobile]}>
           <BarChart
             data={chartData}
             width={chartWidth}
-            height={260}
+            height={chartHeight}
             chartConfig={chartConfig}
             style={styles.chart}
             showBarTops={false}
             fromZero={true}
-            segments={4}
+            segments={isSmallMobile ? 3 : 4}
             withInnerLines={true}
             yAxisLabel="$"
             yAxisSuffix=""
+            verticalLabelRotation={isSmallMobile ? 30 : 0}
           />
         </View>
 
         {/* Period Summary */}
         {showSavings && (
-          <View style={styles.periodSummary}>
-            <Text variant="titleSmall" style={styles.sectionTitle}>Period Summary</Text>
-            
-            <View style={styles.summaryRow}>
+          <View style={[styles.periodSummary, isMobile && styles.periodSummaryMobile, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)' }]}>
+            <Text variant={isMobile ? "bodyMedium" : "titleSmall"} style={[styles.sectionTitle, { color: textColor }]}>Period Summary</Text>
+
+            <View style={[styles.summaryRow, isMobile && styles.summaryRowMobile]}>
               <View style={styles.summaryColumn}>
-                <Text variant="bodySmall" style={styles.summaryLabel}>Total Income</Text>
-                <Text variant="titleSmall" style={[styles.summaryAmount, { color: '#4CAF50' }]}>
+                <Text variant="bodySmall" style={[styles.summaryLabel, { color: themeColors?.textMuted || theme.colors.onSurfaceVariant }]}>Total Income</Text>
+                <Text variant={isMobile ? "bodyMedium" : "titleSmall"} style={[styles.summaryAmount, { color: successColor }]}>
                   ${totalIncome.toFixed(2)}
                 </Text>
               </View>
               <View style={styles.summaryColumn}>
-                <Text variant="bodySmall" style={styles.summaryLabel}>Total Expenses</Text>
-                <Text variant="titleSmall" style={[styles.summaryAmount, { color: '#F44336' }]}>
+                <Text variant="bodySmall" style={[styles.summaryLabel, { color: themeColors?.textMuted || theme.colors.onSurfaceVariant }]}>Total Expenses</Text>
+                <Text variant={isMobile ? "bodyMedium" : "titleSmall"} style={[styles.summaryAmount, { color: dangerColor }]}>
                   ${totalExpenses.toFixed(2)}
                 </Text>
               </View>
             </View>
 
-            <View style={styles.summaryRow}>
+            <View style={[styles.summaryRow, isMobile && styles.summaryRowMobile]}>
               <View style={styles.summaryColumn}>
-                <Text variant="bodySmall" style={styles.summaryLabel}>Avg Monthly Income</Text>
-                <Text variant="titleSmall" style={styles.summaryAmount}>
+                <Text variant="bodySmall" style={[styles.summaryLabel, { color: themeColors?.textMuted || theme.colors.onSurfaceVariant }]}>Avg Monthly Income</Text>
+                <Text variant={isMobile ? "bodyMedium" : "titleSmall"} style={[styles.summaryAmount, { color: textColor }]}>
                   ${avgIncome.toFixed(2)}
                 </Text>
               </View>
               <View style={styles.summaryColumn}>
-                <Text variant="bodySmall" style={styles.summaryLabel}>Avg Monthly Expenses</Text>
-                <Text variant="titleSmall" style={styles.summaryAmount}>
+                <Text variant="bodySmall" style={[styles.summaryLabel, { color: themeColors?.textMuted || theme.colors.onSurfaceVariant }]}>Avg Monthly Expenses</Text>
+                <Text variant={isMobile ? "bodyMedium" : "titleSmall"} style={[styles.summaryAmount, { color: textColor }]}>
                   ${avgExpenses.toFixed(2)}
                 </Text>
               </View>
             </View>
 
-            <View style={styles.savingsContainer}>
-              <View style={styles.savingsRow}>
+            <View style={[styles.savingsContainer, { borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }]}>
+              <View style={[styles.savingsRow, isMobile && styles.savingsRowMobile]}>
                 <View style={styles.savingsColumn}>
-                  <Text variant="bodySmall" style={styles.summaryLabel}>Total Savings</Text>
-                  <Text 
-                    variant="titleLarge" 
+                  <Text variant="bodySmall" style={[styles.summaryLabel, { color: themeColors?.textMuted || theme.colors.onSurfaceVariant }]}>Total Savings</Text>
+                  <Text
+                    variant={isMobile ? "titleMedium" : "titleLarge"}
                     style={[
-                      styles.savingsAmount, 
-                      { color: totalSavings >= 0 ? '#4CAF50' : '#F44336' }
+                      styles.savingsAmount,
+                      isMobile && styles.savingsAmountMobile,
+                      { color: totalSavings >= 0 ? successColor : dangerColor }
                     ]}
                   >
                     {totalSavings >= 0 ? '+' : ''}${totalSavings.toFixed(2)}
                   </Text>
                 </View>
                 <View style={styles.savingsColumn}>
-                  <Text variant="bodySmall" style={styles.summaryLabel}>Savings Rate</Text>
-                  <Text 
-                    variant="titleLarge" 
+                  <Text variant="bodySmall" style={[styles.summaryLabel, { color: themeColors?.textMuted || theme.colors.onSurfaceVariant }]}>Savings Rate</Text>
+                  <Text
+                    variant={isMobile ? "titleMedium" : "titleLarge"}
                     style={[
-                      styles.savingsAmount, 
-                      { color: savingsRate >= 20 ? '#4CAF50' : savingsRate >= 0 ? '#FFA726' : '#F44336' }
+                      styles.savingsAmount,
+                      isMobile && styles.savingsAmountMobile,
+                      { color: savingsRate >= 20 ? successColor : savingsRate >= 0 ? (themeColors?.warning || '#FFA726') : dangerColor }
                     ]}
                   >
                     {savingsRate.toFixed(1)}%
                   </Text>
                 </View>
               </View>
-              <Text variant="bodySmall" style={styles.savingsNote}>
-                {savingsRate >= 20 
-                  ? '🎉 Excellent savings rate!' 
-                  : savingsRate >= 10 
-                  ? '👍 Good savings rate' 
-                  : savingsRate >= 0 
+              <Text variant="bodySmall" style={[styles.savingsNote, { color: themeColors?.textMuted || theme.colors.onSurfaceVariant }]}>
+                {savingsRate >= 20
+                  ? '🎉 Excellent savings rate!'
+                  : savingsRate >= 10
+                  ? '👍 Good savings rate'
+                  : savingsRate >= 0
                   ? '⚠️ Consider saving more'
                   : '⚠️ Spending exceeds income'}
               </Text>
@@ -250,6 +278,13 @@ const styles = StyleSheet.create({
     marginVertical: 8,
     marginHorizontal: 16,
   },
+  cardMobile: {
+    marginHorizontal: 8,
+    marginVertical: 6,
+  },
+  cardContentMobile: {
+    padding: 12,
+  },
   title: {
     marginBottom: 16,
     fontWeight: 'bold',
@@ -262,8 +297,11 @@ const styles = StyleSheet.create({
   summaryContainer: {
     marginBottom: 16,
     padding: 12,
-    backgroundColor: 'rgba(0,0,0,0.02)',
     borderRadius: 8,
+  },
+  summaryContainerMobile: {
+    marginBottom: 10,
+    padding: 10,
   },
   sectionTitle: {
     fontWeight: 'bold',
@@ -274,12 +312,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
   },
+  statsGridMobile: {
+    gap: 4,
+  },
   statBox: {
     alignItems: 'center',
     flex: 1,
   },
   statLabel: {
-    opacity: 0.7,
     marginBottom: 4,
   },
   statValue: {
@@ -288,6 +328,10 @@ const styles = StyleSheet.create({
   chartContainer: {
     alignItems: 'center',
     marginVertical: 16,
+    overflow: 'hidden',
+  },
+  chartContainerMobile: {
+    marginVertical: 10,
   },
   chart: {
     borderRadius: 16,
@@ -295,20 +339,25 @@ const styles = StyleSheet.create({
   periodSummary: {
     marginTop: 16,
     padding: 12,
-    backgroundColor: 'rgba(0,0,0,0.02)',
     borderRadius: 8,
+  },
+  periodSummaryMobile: {
+    marginTop: 10,
+    padding: 10,
   },
   summaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 12,
   },
+  summaryRowMobile: {
+    marginBottom: 8,
+  },
   summaryColumn: {
     flex: 1,
     alignItems: 'center',
   },
   summaryLabel: {
-    opacity: 0.7,
     marginBottom: 4,
     textAlign: 'center',
   },
@@ -319,12 +368,14 @@ const styles = StyleSheet.create({
     marginTop: 16,
     paddingTop: 16,
     borderTopWidth: 2,
-    borderTopColor: 'rgba(0,0,0,0.1)',
   },
   savingsRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
     marginBottom: 8,
+  },
+  savingsRowMobile: {
+    marginBottom: 6,
   },
   savingsColumn: {
     alignItems: 'center',
@@ -333,9 +384,11 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 24,
   },
+  savingsAmountMobile: {
+    fontSize: 18,
+  },
   savingsNote: {
     textAlign: 'center',
-    opacity: 0.7,
     marginTop: 8,
   },
 });

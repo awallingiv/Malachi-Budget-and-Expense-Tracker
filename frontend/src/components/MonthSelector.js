@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Animated,
   PanResponder,
   Platform,
+  Dimensions,
 } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 
@@ -23,7 +24,20 @@ export default function MonthSelector({ selectedDate, onDateChange, onCustomRang
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
   const [pickerYear, setPickerYear] = useState(selectedDate.getFullYear());
-  
+
+  // Track screen dimensions for responsive design
+  const [dimensions, setDimensions] = useState(Dimensions.get('window'));
+
+  useEffect(() => {
+    const subscription = Dimensions.addEventListener('change', ({ window }) => {
+      setDimensions(window);
+    });
+    return () => subscription?.remove();
+  }, []);
+
+  const isMobile = dimensions.width < 600;
+  const isSmallMobile = dimensions.width < 400;
+
   const translateX = useRef(new Animated.Value(0)).current;
   
   // Swipe gesture handler
@@ -90,13 +104,13 @@ export default function MonthSelector({ selectedDate, onDateChange, onCustomRang
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingHorizontal: isMobile ? 12 : 20, paddingVertical: isMobile ? 10 : 12 }]}>
       {/* Arrow Navigation */}
-      <TouchableOpacity 
-        style={[styles.arrowButton, { backgroundColor: theme.surface }]}
+      <TouchableOpacity
+        style={[styles.arrowButton, { backgroundColor: theme.surface, width: isSmallMobile ? 36 : 40, height: isSmallMobile ? 36 : 40 }]}
         onPress={goToPreviousMonth}
       >
-        <Text style={[styles.arrowText, { color: theme.text }]}>‹</Text>
+        <Text style={[styles.arrowText, { color: theme.text, fontSize: isSmallMobile ? 24 : 28 }]}>‹</Text>
       </TouchableOpacity>
 
       {/* Month Display with Swipe */}
@@ -108,40 +122,40 @@ export default function MonthSelector({ selectedDate, onDateChange, onCustomRang
         ]}
       >
         <TouchableOpacity onPress={() => setShowPicker(true)}>
-          <Text style={[styles.monthText, { color: theme.text }]}>
+          <Text style={[styles.monthText, { color: theme.text, fontSize: isSmallMobile ? 16 : isMobile ? 18 : 20 }]}>
             {formatMonth(selectedDate)}
           </Text>
-          <Text style={[styles.tapHint, { color: theme.textSecondary }]}>
+          <Text style={[styles.tapHint, { color: theme.textSecondary, fontSize: isSmallMobile ? 10 : 11 }]}>
             Tap to select range
           </Text>
         </TouchableOpacity>
       </Animated.View>
 
       {/* Arrow Navigation */}
-      <TouchableOpacity 
+      <TouchableOpacity
         style={[
-          styles.arrowButton, 
-          { backgroundColor: theme.surface },
+          styles.arrowButton,
+          { backgroundColor: theme.surface, width: isSmallMobile ? 36 : 40, height: isSmallMobile ? 36 : 40 },
           isCurrentMonth() && styles.arrowButtonDisabled
         ]}
         onPress={goToNextMonth}
         disabled={isCurrentMonth()}
       >
         <Text style={[
-          styles.arrowText, 
-          { color: isCurrentMonth() ? theme.textDisabled : theme.text }
+          styles.arrowText,
+          { color: isCurrentMonth() ? theme.textDisabled : theme.text, fontSize: isSmallMobile ? 24 : 28 }
         ]}>›</Text>
       </TouchableOpacity>
 
       {/* Date Picker Modal */}
       <Modal visible={showPicker} transparent animationType="fade">
-        <TouchableOpacity 
-          style={styles.modalOverlay}
+        <TouchableOpacity
+          style={[styles.modalOverlay, { padding: isMobile ? 12 : 20 }]}
           activeOpacity={1}
           onPress={() => setShowPicker(false)}
         >
-          <View 
-            style={[styles.modalContent, { backgroundColor: theme.background }]}
+          <View
+            style={[styles.modalContent, { backgroundColor: theme.background, padding: isMobile ? 16 : 20, maxWidth: isMobile ? '100%' : 360 }]}
             onStartShouldSetResponder={() => true}
           >
             <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>

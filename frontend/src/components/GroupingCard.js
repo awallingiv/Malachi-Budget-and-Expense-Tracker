@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Platform, Modal } from 'react-native';
+import React, { useMemo, useState, useEffect } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Platform, Modal, Dimensions } from 'react-native';
 
 /**
  * GroupingCard - Compact half-width dashboard card for expense groupings
@@ -21,6 +21,19 @@ const GroupingCard = ({
   const [sortBy, setSortBy] = useState('date-desc'); // date-desc, date-asc, amount-desc, amount-asc
   const [filterText, setFilterText] = useState('');
   const [showSortModal, setShowSortModal] = useState(false);
+
+  // Track screen dimensions for responsive design
+  const [dimensions, setDimensions] = useState(Dimensions.get('window'));
+
+  useEffect(() => {
+    const subscription = Dimensions.addEventListener('change', ({ window }) => {
+      setDimensions(window);
+    });
+    return () => subscription?.remove();
+  }, []);
+
+  const isMobile = dimensions.width < 600;
+  const isSmallMobile = dimensions.width < 400;
 
   // Filter transactions for this grouping and sort by date
   const groupTransactions = useMemo(() => {
@@ -83,9 +96,10 @@ const GroupingCard = ({
   const transactionCount = groupTransactions.length;
 
   return (
-    <View 
+    <View
       style={[
         styles.container,
+        { minHeight: isMobile ? 300 : 400 },
         isDragOver && styles.containerDragOver
       ]}
       onDragOver={(e) => {
@@ -102,42 +116,42 @@ const GroupingCard = ({
     >
       {/* Color accent bar */}
       <View style={[styles.colorBar, { backgroundColor: grouping.Color || '#00d4aa' }]} />
-      
+
       {/* Header with Name and Add Button */}
-      <View style={styles.header}>
+      <View style={[styles.header, isMobile && { paddingHorizontal: 10, paddingTop: 10, gap: 8 }]}>
         <View style={styles.titleContainer}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: isSmallMobile ? 4 : 6 }}>
             {grouping.Icon && grouping.Icon.trim() && (
-              <Text style={{ fontSize: 18 }}>{grouping.Icon}</Text>
+              <Text style={{ fontSize: isSmallMobile ? 16 : 18 }}>{grouping.Icon}</Text>
             )}
-            <Text style={[styles.title, { color: colors.text, flex: 1 }]} numberOfLines={1}>
+            <Text style={[styles.title, { color: colors.text, flex: 1, fontSize: isSmallMobile ? 14 : 16 }]} numberOfLines={1}>
               {grouping.GroupingName}
             </Text>
           </View>
-          <Text style={[styles.subtitle, { color: colors.textMuted }]}>
+          <Text style={[styles.subtitle, { color: colors.textMuted, fontSize: isSmallMobile ? 10 : 11 }]}>
             {transactionCount} transaction{transactionCount !== 1 ? 's' : ''}
           </Text>
         </View>
-        <View style={styles.headerControls}>
+        <View style={[styles.headerControls, isMobile && { gap: 4 }]}>
           <TouchableOpacity
-            style={[styles.sortButton, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder }]}
+            style={[styles.sortButton, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, paddingHorizontal: isSmallMobile ? 10 : 16, paddingVertical: isSmallMobile ? 6 : 8 }]}
             onPress={() => setShowSortModal(true)}
           >
-            <Text style={[styles.sortButtonText, { color: colors.text }]}>Sort</Text>
+            <Text style={[styles.sortButtonText, { color: colors.text, fontSize: isSmallMobile ? 11 : 13 }]}>Sort</Text>
           </TouchableOpacity>
-          <Text style={[styles.sortLabel, { color: colors.textMuted }]}>
-            {sortBy === 'date-desc' ? 'Date ↓' : 
+          <Text style={[styles.sortLabel, { color: colors.textMuted, fontSize: isSmallMobile ? 10 : 12 }]}>
+            {sortBy === 'date-desc' ? 'Date ↓' :
              sortBy === 'date-asc' ? 'Date ↑' :
-             sortBy === 'amount-desc' ? 'Amount ↓' : 'Amount ↑'}
+             sortBy === 'amount-desc' ? 'Amt ↓' : 'Amt ↑'}
           </Text>
         </View>
-        <View style={styles.headerButtons}>
+        <View style={[styles.headerButtons, isMobile && { gap: 6 }]}>
           {onToggleExpand && (
             <TouchableOpacity
               onPress={() => onToggleExpand(grouping.GroupingID)}
-              style={[styles.expandButton, { backgroundColor: colors.inputBg }]}
+              style={[styles.expandButton, { backgroundColor: colors.inputBg, width: isSmallMobile ? 28 : 32, height: isSmallMobile ? 28 : 32 }]}
             >
-              <Text style={[styles.expandButtonText, { color: colors.textMuted }]}>
+              <Text style={[styles.expandButtonText, { color: colors.textMuted, fontSize: isSmallMobile ? 14 : 16 }]}>
                 {isExpanded ? '⇱' : '⇲'}
               </Text>
             </TouchableOpacity>
@@ -145,23 +159,23 @@ const GroupingCard = ({
           {onEditGrouping && (
             <TouchableOpacity
               onPress={() => onEditGrouping(grouping)}
-              style={[styles.menuButton, { backgroundColor: colors.inputBg }]}
+              style={[styles.menuButton, { backgroundColor: colors.inputBg, width: isSmallMobile ? 28 : 32, height: isSmallMobile ? 28 : 32 }]}
             >
-              <Text style={[styles.menuButtonText, { color: colors.textMuted }]}>⋮</Text>
+              <Text style={[styles.menuButtonText, { color: colors.textMuted, fontSize: isSmallMobile ? 18 : 20 }]}>⋮</Text>
             </TouchableOpacity>
           )}
           <TouchableOpacity
             onPress={() => onAddExpense(grouping)}
-            style={[styles.addButton, { backgroundColor: colors.primary }]}
+            style={[styles.addButton, { backgroundColor: colors.primary, width: isSmallMobile ? 28 : 32, height: isSmallMobile ? 28 : 32 }]}
           >
-            <Text style={styles.addButtonText}>+</Text>
+            <Text style={[styles.addButtonText, { fontSize: isSmallMobile ? 16 : 18 }]}>+</Text>
           </TouchableOpacity>
         </View>
       </View>
 
       {/* Scrollable Transactions List */}
       <ScrollView
-        style={styles.transactionsList}
+        style={[styles.transactionsList, { maxHeight: isMobile ? 200 : 300 }]}
         showsVerticalScrollIndicator={true}
         nestedScrollEnabled={true}
       >
@@ -171,7 +185,7 @@ const GroupingCard = ({
               key={txn.TransactionId}
               style={[
                 styles.transactionRow,
-                { borderBottomColor: colors.cardBorder }
+                { borderBottomColor: colors.cardBorder, paddingVertical: isSmallMobile ? 8 : 10, paddingHorizontal: isSmallMobile ? 10 : 12 }
               ]}
               onPress={() => onEditTransaction(txn)}
               draggable={Platform.OS === 'web'}
@@ -182,44 +196,44 @@ const GroupingCard = ({
                 }
               }}
             >
-              <View style={styles.transactionContent}>
+              <View style={[styles.transactionContent, isMobile && { gap: 8 }]}>
                 <Text
-                  style={[styles.transactionDesc, { color: colors.text }]}
+                  style={[styles.transactionDesc, { color: colors.text, fontSize: isSmallMobile ? 13 : 15, minWidth: isSmallMobile ? 80 : 120 }]}
                   numberOfLines={1}
                 >
                   {txn.Name}
                 </Text>
                 {txn.Category && (
                   <Text
-                    style={[styles.transactionCategory, { color: colors.textMuted }]}
+                    style={[styles.transactionCategory, { color: colors.textMuted, fontSize: isSmallMobile ? 11 : 13 }]}
                     numberOfLines={1}
                   >
                     {txn.Category}
                   </Text>
                 )}
-                {txn.Notes && (
+                {txn.Notes && !isSmallMobile && (
                   <Text
-                    style={[styles.transactionNotes, { color: colors.textMuted }]}
+                    style={[styles.transactionNotes, { color: colors.textMuted, fontSize: isSmallMobile ? 11 : 13 }]}
                     numberOfLines={1}
                   >
                     {txn.Notes}
                   </Text>
                 )}
-                <Text style={[styles.transactionDate, { color: colors.textMuted }]}>
+                <Text style={[styles.transactionDate, { color: colors.textMuted, fontSize: isSmallMobile ? 11 : 13 }]}>
                   {formatDate(txn.Date)}
                 </Text>
               </View>
-              <Text style={[styles.transactionAmount, { color: colors.danger || '#ef4444' }]}>
+              <Text style={[styles.transactionAmount, { color: colors.danger || '#ef4444', fontSize: isSmallMobile ? 13 : 15, minWidth: isSmallMobile ? 50 : 70 }]}>
                 {formatCurrency(txn.Amount)}
               </Text>
             </TouchableOpacity>
           ))
         ) : (
           <View style={styles.emptyContainer}>
-            <Text style={[styles.emptyText, { color: colors.textMuted }]}>
+            <Text style={[styles.emptyText, { color: colors.textMuted, fontSize: isSmallMobile ? 12 : 13 }]}>
               No expenses yet
             </Text>
-            <Text style={[styles.emptyHint, { color: colors.textMuted }]}>
+            <Text style={[styles.emptyHint, { color: colors.textMuted, fontSize: isSmallMobile ? 10 : 11 }]}>
               Tap + to add one
             </Text>
           </View>
@@ -227,9 +241,9 @@ const GroupingCard = ({
       </ScrollView>
 
       {/* Total Amount - Prominent Display at Bottom */}
-      <View style={[styles.totalContainer, { backgroundColor: colors.inputBg }]}>
-        <Text style={[styles.totalLabel, { color: colors.textMuted }]}>Total Spent</Text>
-        <Text style={[styles.totalAmount, { color: colors.text }]}>
+      <View style={[styles.totalContainer, { backgroundColor: colors.inputBg, padding: isSmallMobile ? 10 : 12 }]}>
+        <Text style={[styles.totalLabel, { color: colors.textMuted, fontSize: isSmallMobile ? 10 : 11 }]}>Total Spent</Text>
+        <Text style={[styles.totalAmount, { color: colors.text, fontSize: isSmallMobile ? 18 : 22 }]}>
           {formatCurrencyFull(totalSpending)}
         </Text>
       </View>

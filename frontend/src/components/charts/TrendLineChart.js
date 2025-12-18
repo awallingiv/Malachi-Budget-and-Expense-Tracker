@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, StyleSheet, Dimensions } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, StyleSheet, Dimensions, Platform } from 'react-native';
 import { Text, useTheme, Card } from 'react-native-paper';
 import { LineChart } from 'react-native-chart-kit';
 import { useTheme as useAppTheme } from '../../context/ThemeContext';
@@ -7,10 +7,31 @@ import { useTheme as useAppTheme } from '../../context/ThemeContext';
 const TrendLineChart = ({ data = [], title = 'Spending Trends', showAverage = true }) => {
   const theme = useTheme();
   const { colors: themeColors, isDark } = useAppTheme();
-  const screenWidth = Dimensions.get('window').width;
-  const chartWidth = Math.min(screenWidth - 40, 600);
 
-  // Get theme-aware colors
+  // Track screen dimensions for responsive design
+  const [dimensions, setDimensions] = useState(Dimensions.get('window'));
+
+  useEffect(() => {
+    const subscription = Dimensions.addEventListener('change', ({ window }) => {
+      setDimensions(window);
+    });
+    return () => subscription?.remove();
+  }, []);
+
+  const screenWidth = dimensions.width;
+  const isMobile = screenWidth < 600;
+  const isSmallMobile = screenWidth < 400;
+
+  // Responsive chart sizing
+  const chartWidth = isSmallMobile
+    ? screenWidth - 20
+    : isMobile
+      ? Math.min(screenWidth - 30, 500)
+      : Math.min(screenWidth - 40, 600);
+
+  const chartHeight = isSmallMobile ? 200 : isMobile ? 220 : 240;
+
+  // Get theme-aware colors with high contrast
   const textColor = themeColors?.chartText || (isDark ? '#FFFFFF' : '#1a1a2e');
   const gridColor = themeColors?.chartGrid || (isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)');
   const primaryColor = themeColors?.primary || theme.colors.primary;
@@ -41,14 +62,14 @@ const TrendLineChart = ({ data = [], title = 'Spending Trends', showAverage = tr
   // Handle empty data state
   if (!data || data.length === 0 || processedData.values.length === 0) {
     return (
-      <Card style={styles.card}>
+      <Card style={[styles.card, isMobile && styles.cardMobile]}>
         <Card.Content>
-          <Text variant="titleMedium" style={styles.title}>{title}</Text>
+          <Text variant={isMobile ? "titleSmall" : "titleMedium"} style={[styles.title, { color: textColor }]}>{title}</Text>
           <View style={styles.emptyState}>
-            <Text variant="bodyLarge" style={{ color: theme.colors.onSurfaceVariant }}>
+            <Text variant="bodyLarge" style={{ color: themeColors?.textMuted || theme.colors.onSurfaceVariant }}>
               No trend data available
             </Text>
-            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginTop: 8 }}>
+            <Text variant="bodySmall" style={{ color: themeColors?.textDim || theme.colors.onSurfaceVariant, marginTop: 8 }}>
               Add transactions over multiple months to see trends
             </Text>
           </View>
@@ -109,33 +130,37 @@ const TrendLineChart = ({ data = [], title = 'Spending Trends', showAverage = tr
   const trendPercentage = firstValue > 0 ? ((trendChange / firstValue) * 100).toFixed(1) : 0;
   const isIncreasing = trendChange > 0;
 
+  // Use theme-aware colors for trend
+  const successColor = themeColors?.success || theme.colors.tertiary;
+  const dangerColor = themeColors?.danger || theme.colors.error;
+
   return (
-    <Card style={styles.card}>
-      <Card.Content>
-        <Text variant="titleMedium" style={styles.title}>{title}</Text>
-        
-        <View style={styles.statsRow}>
+    <Card style={[styles.card, isMobile && styles.cardMobile]}>
+      <Card.Content style={isMobile && styles.cardContentMobile}>
+        <Text variant={isMobile ? "titleSmall" : "titleMedium"} style={[styles.title, { color: textColor }]}>{title}</Text>
+
+        <View style={[styles.statsRow, isMobile && styles.statsRowMobile]}>
           <View style={styles.statItem}>
-            <Text variant="bodySmall" style={styles.statLabel}>Current</Text>
-            <Text variant="titleMedium" style={styles.statValue}>${lastValue.toFixed(2)}</Text>
+            <Text variant="bodySmall" style={[styles.statLabel, { color: themeColors?.textMuted || theme.colors.onSurfaceVariant }]}>Current</Text>
+            <Text variant={isMobile ? "titleSmall" : "titleMedium"} style={[styles.statValue, { color: textColor }]}>${lastValue.toFixed(2)}</Text>
           </View>
-          
+
           {showAverage && (
             <View style={styles.statItem}>
-              <Text variant="bodySmall" style={styles.statLabel}>Average</Text>
-              <Text variant="titleMedium" style={styles.statValue}>
+              <Text variant="bodySmall" style={[styles.statLabel, { color: themeColors?.textMuted || theme.colors.onSurfaceVariant }]}>Average</Text>
+              <Text variant={isMobile ? "titleSmall" : "titleMedium"} style={[styles.statValue, { color: textColor }]}>
                 ${processedData.average.toFixed(2)}
               </Text>
             </View>
           )}
-          
+
           <View style={styles.statItem}>
-            <Text variant="bodySmall" style={styles.statLabel}>Trend</Text>
-            <Text 
-              variant="titleMedium" 
+            <Text variant="bodySmall" style={[styles.statLabel, { color: themeColors?.textMuted || theme.colors.onSurfaceVariant }]}>Trend</Text>
+            <Text
+              variant={isMobile ? "titleSmall" : "titleMedium"}
               style={[
-                styles.statValue, 
-                { color: isIncreasing ? theme.colors.error : theme.colors.tertiary }
+                styles.statValue,
+                { color: isIncreasing ? dangerColor : successColor }
               ]}
             >
               {isIncreasing ? '↑' : '↓'} {Math.abs(trendPercentage)}%
@@ -143,11 +168,11 @@ const TrendLineChart = ({ data = [], title = 'Spending Trends', showAverage = tr
           </View>
         </View>
 
-        <View style={styles.chartContainer}>
+        <View style={[styles.chartContainer, isMobile && styles.chartContainerMobile]}>
           <LineChart
             data={chartData}
             width={chartWidth}
-            height={240}
+            height={chartHeight}
             chartConfig={chartConfig}
             bezier
             style={styles.chart}
@@ -155,22 +180,22 @@ const TrendLineChart = ({ data = [], title = 'Spending Trends', showAverage = tr
             withOuterLines={true}
             withVerticalLines={false}
             withHorizontalLines={true}
-            withDots={true}
+            withDots={!isSmallMobile}
             withShadow={false}
             fromZero={true}
-            segments={4}
+            segments={isSmallMobile ? 3 : 4}
           />
         </View>
 
-        <View style={styles.legendContainer}>
+        <View style={[styles.legendContainer, isMobile && styles.legendContainerMobile]}>
           <View style={styles.legendItem}>
-            <View style={[styles.legendLine, { backgroundColor: primaryColor }]} />
+            <View style={[styles.legendLine, isMobile && styles.legendLineMobile, { backgroundColor: primaryColor }]} />
             <Text variant="bodySmall" style={{ color: textColor }}>Monthly Spending</Text>
           </View>
           {showAverage && (
             <View style={styles.legendItem}>
-              <View style={[styles.legendDash, { borderColor: themeColors?.textMuted || theme.colors.outline }]} />
-              <Text variant="bodySmall" style={{ color: textColor }}>Average: ${processedData.average.toFixed(2)}</Text>
+              <View style={[styles.legendDash, isMobile && styles.legendDashMobile, { borderColor: themeColors?.textMuted || theme.colors.outline }]} />
+              <Text variant="bodySmall" style={{ color: textColor }}>Avg: ${processedData.average.toFixed(2)}</Text>
             </View>
           )}
         </View>
@@ -183,6 +208,13 @@ const styles = StyleSheet.create({
   card: {
     marginVertical: 8,
     marginHorizontal: 16,
+  },
+  cardMobile: {
+    marginHorizontal: 8,
+    marginVertical: 6,
+  },
+  cardContentMobile: {
+    padding: 12,
   },
   title: {
     marginBottom: 16,
@@ -199,11 +231,14 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     paddingVertical: 8,
   },
+  statsRowMobile: {
+    marginBottom: 10,
+    paddingVertical: 4,
+  },
   statItem: {
     alignItems: 'center',
   },
   statLabel: {
-    opacity: 0.7,
     marginBottom: 4,
   },
   statValue: {
@@ -212,6 +247,10 @@ const styles = StyleSheet.create({
   chartContainer: {
     alignItems: 'center',
     marginVertical: 8,
+    overflow: 'hidden',
+  },
+  chartContainerMobile: {
+    marginVertical: 6,
   },
   chart: {
     borderRadius: 16,
@@ -223,6 +262,11 @@ const styles = StyleSheet.create({
     marginTop: 16,
     gap: 20,
   },
+  legendContainerMobile: {
+    marginTop: 10,
+    gap: 12,
+    flexWrap: 'wrap',
+  },
   legendItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -233,11 +277,18 @@ const styles = StyleSheet.create({
     height: 3,
     borderRadius: 2,
   },
+  legendLineMobile: {
+    width: 18,
+    height: 2,
+  },
   legendDash: {
     width: 24,
     height: 0,
     borderWidth: 1,
     borderStyle: 'dashed',
+  },
+  legendDashMobile: {
+    width: 18,
   },
 });
 
