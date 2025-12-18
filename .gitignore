@@ -69,3 +69,4 @@ frontend/node_modules/.bin/jsesc
 /frontend/node_modules
 tree.txt
 backend/.env.test
+nul
