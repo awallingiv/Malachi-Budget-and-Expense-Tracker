@@ -27,6 +27,37 @@ const { width: screenWidth } = Dimensions.get('window');
 // Category colors for visual distinction
 const categoryColors = ['#00d4aa', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeaa7', '#ff6b6b', '#a29bfe', '#fd79a8'];
 
+const PAGE_SIZE = 100;
+
+const fetchAllPages = async (fetchPage, limit = PAGE_SIZE) => {
+  const all = [];
+  let page = 1;
+
+  while (true) {
+    const response = await fetchPage(page, limit);
+    const pageData = Array.isArray(response?.data)
+      ? response.data
+      : Array.isArray(response)
+      ? response
+      : [];
+    const pagination = response?.pagination;
+
+    if (!pagination) {
+      return pageData;
+    }
+
+    all.push(...pageData);
+
+    if (!pagination.hasMore || pageData.length === 0) {
+      break;
+    }
+
+    page += 1;
+  }
+
+  return all;
+};
+
 // Background presets - Must be defined before getColors
 const BACKGROUND_PRESETS = {
   default: {
@@ -294,7 +325,7 @@ const TransactionRow = ({ transaction, onEdit, onDelete, colors }) => {
           {transaction.Name || 'Transaction'}
         </Text>
         <Text style={[styles.transactionCategory, { color: c.textDim }]}>
-          {transaction.Category || 'General'} • {formatDate(transaction.Date || transaction.CreationTime)}
+          {transaction.Category ? `${transaction.Category} • ` : ''}{formatDate(transaction.Date || transaction.CreationTime)}
         </Text>
       </View>
       <Text style={[styles.transactionAmount, { color: c.danger }]}>
@@ -517,36 +548,32 @@ const ModernDashboard = () => {
       const now = selectedMonth || new Date();
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
       const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      const startDate = startOfMonth.toISOString().split('T')[0];
+      const endDate = endOfMonth.toISOString().split('T')[0];
 
       const [stats, txnsResponse, incomeResponse, cats, budgetRows, userGroupings] = await Promise.all([
-        budgetService.getDashboardStats(user.UserId).catch(() => null),
-        budgetService.getTransactions(user.UserId, {
-          startDate: startOfMonth.toISOString().split('T')[0],
-          endDate: endOfMonth.toISOString().split('T')[0],
-          page: 1,
-          limit: 50
-        }).catch(() => ({ data: [], pagination: { total: 0 } })),
-        budgetService.getIncome(
-          user.UserId,
-          startOfMonth.toISOString().split('T')[0],
-          endOfMonth.toISOString().split('T')[0],
-          1,
-          50
-        ).catch(() => ({ data: [], pagination: { total: 0 } })),
+        budgetService.getDashboardStats(user.UserId, startDate, endDate).catch(() => null),
+        fetchAllPages(
+          (page, limit) => budgetService.getTransactions(user.UserId, { startDate, endDate, page, limit }),
+          PAGE_SIZE
+        ).catch(() => []),
+        fetchAllPages(
+          (page, limit) => budgetService.getIncome(user.UserId, startDate, endDate, page, limit),
+          PAGE_SIZE
+        ).catch(() => []),
         budgetService.getUserCategories(user.UserId).catch(() => []),
         budgetService
           .getBudgets(user.UserId, {
-            startDate: startOfMonth.toISOString().split('T')[0],
-            endDate: endOfMonth.toISOString().split('T')[0],
+            startDate,
+            endDate,
           })
           .catch(() => []),
         groupingService.getUserGroupings(user.UserId).catch(() => []),
       ]);
 
       setDashboardData(stats);
-      // Extract data arrays from paginated responses
-      setTransactions(txnsResponse?.data || txnsResponse || []);
-      setIncomeList(incomeResponse?.data || incomeResponse || []);
+      setTransactions(txnsResponse || []);
+      setIncomeList(incomeResponse || []);
       setCategories(cats || []);
       setBudgets(budgetRows || []);
       setGroupings(userGroupings || []);
@@ -562,8 +589,8 @@ const ModernDashboard = () => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     }).format(amount || 0);
   };
 
@@ -605,20 +632,14 @@ const ModernDashboard = () => {
   // Filter income by date range
   const filteredIncome = useMemo(() => {
     const { start, end } = getDateRange();
-    console.log('📅 Filtering income:', { start, end, totalIncome: incomeList.length });
     
     let filtered = incomeList.filter(i => {
       const date = i.Date || i.PaycheckDate;
       if (!date) {
-        console.log('⚠️ Income missing date:', i);
         return false;
       }
       const incDate = date.split('T')[0];
-      const included = incDate >= start && incDate <= end;
-      if (!included) {
-        console.log('❌ Income filtered out:', { incDate, start, end, description: i.Description });
-      }
-      return included;
+      return incDate >= start && incDate <= end;
     });
     
     // Apply text filter
@@ -649,7 +670,6 @@ const ModernDashboard = () => {
       }
     });
     
-    console.log('✅ Filtered income count:', filtered.length);
     return filtered;
   }, [incomeList, selectedMonth, customDateRange, incomeSortBy, incomeFilterText]);
 
@@ -985,7 +1005,7 @@ const ModernDashboard = () => {
         Amount: parseFloat(expenseForm.Amount) || 0,
         Date: expenseForm.Date,
         Notes: expenseForm.Notes,
-        Category: categoryInput || 'General', // Category name
+        Category: categoryInput || null, // Category is optional
         Status: expenseForm.Status
       };
 
@@ -1512,7 +1532,7 @@ const ModernDashboard = () => {
                   {topGroupingsList.slice(0, 4).map((grp) => (
                     <View key={grp.GroupingID} style={styles.compactRowTight}>
                       <Text style={[styles.compactLabelSmall, { color: colors.textMuted }]} numberOfLines={1}>
-                        {((grp.Icon && grp.Icon.trim()) ? grp.Icon : '📁')} {grp.GroupingName}
+                        {grp.Icon ? `${grp.Icon} ` : ''}{grp.GroupingName}
                       </Text>
                       <Text style={[styles.compactValueSmall, { color: colors.danger }]}>
                         {formatCurrency(grp.totalAmount)}
@@ -2033,9 +2053,29 @@ const ModernDashboard = () => {
                 </View>
               </View>
               
-              {/* Category Input with Autocomplete */}
+              <ModalInput
+                label="Name"
+                value={expenseForm.Description}
+                onChangeText={(text) => setExpenseForm(prev => ({ ...prev, Description: text }))}
+                placeholder="e.g., Trash and Water, Electric Bill"
+              />
+              <ModalInput
+                label="Amount"
+                value={expenseForm.Amount}
+                onChangeText={(text) => setExpenseForm(prev => ({ ...prev, Amount: text }))}
+                placeholder="0.00"
+                keyboardType="decimal-pad"
+              />
+              <ModalInput
+                label="Date"
+                value={expenseForm.Date}
+                onChangeText={(text) => setExpenseForm(prev => ({ ...prev, Date: text }))}
+                placeholder="YYYY-MM-DD"
+              />
+
+              {/* Category Input with Autocomplete (optional) */}
               <View style={styles.fieldGroup}>
-                <Text style={[styles.modalLabel, { color: colors.text }]}>Category</Text>
+                <Text style={[styles.modalLabel, { color: colors.text }]}>Category (optional)</Text>
                 <TextInput
                   style={[styles.modalInput, dynamicStyles.input]}
                   value={categoryInput}
@@ -2058,26 +2098,7 @@ const ModernDashboard = () => {
                   </View>
                 )}
               </View>
-              
-              <ModalInput
-                label="Name"
-                value={expenseForm.Description}
-                onChangeText={(text) => setExpenseForm(prev => ({ ...prev, Description: text }))}
-                placeholder="e.g., Trash and Water, Electric Bill"
-              />
-              <ModalInput
-                label="Amount"
-                value={expenseForm.Amount}
-                onChangeText={(text) => setExpenseForm(prev => ({ ...prev, Amount: text }))}
-                placeholder="0.00"
-                keyboardType="decimal-pad"
-              />
-              <ModalInput
-                label="Date"
-                value={expenseForm.Date}
-                onChangeText={(text) => setExpenseForm(prev => ({ ...prev, Date: text }))}
-                placeholder="YYYY-MM-DD"
-              />
+
               <ModalInput
                 label="Notes (optional)"
                 value={expenseForm.Notes}

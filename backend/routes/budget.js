@@ -93,8 +93,8 @@ const validateIncome = [
     .withMessage('Tithe status must be maximum 45 characters'),
   body('date')
     .optional()
-    .isLength({ max: 45 })
-    .withMessage('Date must be maximum 45 characters (stored as VARCHAR)'),
+    .isISO8601()
+    .withMessage('Date must be a valid ISO8601 date'),
   body('paycheckStatus')
     .optional()
     .isLength({ max: 45 })

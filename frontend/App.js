@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Platform, View, Text, SafeAreaView } from 'react-native';
 import { Provider as PaperProvider } from 'react-native-paper';
@@ -11,69 +11,72 @@ import WebVerifyEmailPage from './src/screens/WebVerifyEmailPage';
 import WebResetPasswordPage from './src/screens/WebResetPasswordPage';
 
 function AppContent() {
-  const { isDark } = useTheme();
-  
-  try {
-    const authContext = useAuth();
-    
-    if (!authContext) {
-      return (
-        <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0a0f1a' : '#f5f5f5', justifyContent: 'center', alignItems: 'center' }}>
-          <Text style={{ color: 'red', fontSize: 18 }}>Auth Context Error</Text>
-        </SafeAreaView>
-      );
+  const { isDark, syncWithBackend } = useTheme();
+  const hasSyncedRef = useRef(false);
+  const authContext = useAuth();
+  const user = authContext?.user;
+  const isLoading = authContext?.isLoading;
+
+  // Sync theme preferences from backend when user logs in
+  useEffect(() => {
+    if (user?.UserId && !hasSyncedRef.current) {
+      hasSyncedRef.current = true;
+      syncWithBackend(user.UserId);
     }
-    
-    const { user, isLoading } = authContext;
-    
-    if (isLoading) {
-      return (
-        <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0a0f1a' : '#f5f5f5', justifyContent: 'center', alignItems: 'center' }}>
-          <Text style={{ color: isDark ? 'white' : '#333', fontSize: 28, fontWeight: '700' }}>Malachi: Budget, Expense, and Tithe Tracking</Text>
-          <Text style={{ color: '#666', fontSize: 14, marginTop: 10 }}>Loading...</Text>
-        </SafeAreaView>
-      );
+    // Reset sync flag when user logs out
+    if (!user) {
+      hasSyncedRef.current = false;
     }
-    
-    // Platform-specific rendering
-    if (Platform.OS === 'web') {
-      // Handle special web-only routes for email verification and password reset
-      const path =
-        typeof window !== 'undefined' && window.location && window.location.pathname
-          ? window.location.pathname
-          : '/';
+  }, [user?.UserId, syncWithBackend]);
 
-      if (path.startsWith('/verify-email')) {
-        return <WebVerifyEmailPage />;
-      }
+  if (!authContext) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0a0f1a' : '#f5f5f5', justifyContent: 'center', alignItems: 'center' }}>
+        <Text style={{ color: 'red', fontSize: 18 }}>Auth Context Error</Text>
+      </SafeAreaView>
+    );
+  }
 
-      if (path.startsWith('/reset-password')) {
-        return <WebResetPasswordPage />;
-      }
+  if (isLoading) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0a0f1a' : '#f5f5f5', justifyContent: 'center', alignItems: 'center' }}>
+        <Text style={{ color: isDark ? 'white' : '#333', fontSize: 28, fontWeight: '700' }}>Malachi: Budget, Expense, and Tithe Tracking</Text>
+        <Text style={{ color: '#666', fontSize: 14, marginTop: 10 }}>Loading...</Text>
+      </SafeAreaView>
+    );
+  }
 
-      // If not logged in, show login screen
-      if (!user) {
-        return <LoginScreen />;
-      }
+  // Platform-specific rendering
+  if (Platform.OS === 'web') {
+    // Handle special web-only routes for email verification and password reset
+    const path =
+      typeof window !== 'undefined' && window.location && window.location.pathname
+        ? window.location.pathname
+        : '/';
 
-      // Default web dashboard
-      return <ModernDashboard />;
+    if (path.startsWith('/verify-email')) {
+      return <WebVerifyEmailPage />;
     }
 
-    // Native (mobile) flow
+    if (path.startsWith('/reset-password')) {
+      return <WebResetPasswordPage />;
+    }
+
+    // If not logged in, show login screen
     if (!user) {
       return <LoginScreen />;
     }
 
-    return <MobileNavigator />;
-  } catch (error) {
-    console.error('❌ AppContent error:', error);
-    return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#0a0f1a', justifyContent: 'center', alignItems: 'center' }}>
-        <Text style={{ color: 'red', fontSize: 18 }}>Error: {error.message}</Text>
-      </SafeAreaView>
-    );
+    // Default web dashboard
+    return <ModernDashboard />;
   }
+
+  // Native (mobile) flow
+  if (!user) {
+    return <LoginScreen />;
+  }
+
+  return <MobileNavigator />;
 }
 
 const App = () => {

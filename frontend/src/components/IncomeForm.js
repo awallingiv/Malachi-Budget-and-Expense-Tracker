@@ -17,7 +17,7 @@ const IncomeForm = ({
     tithe: '',
     tithePercentage: '10', // Default 10%
     titheStatus: 'Pending',
-    date: new Date().toLocaleDateString(), // VARCHAR format for database
+    date: new Date().toISOString().split('T')[0], // YYYY-MM-DD format for database
     paycheckStatus: 'Received',
     notes: ''
   });
@@ -37,6 +37,16 @@ const IncomeForm = ({
 
   useEffect(() => {
     if (income) {
+      // Format date from database (DATETIME) to YYYY-MM-DD for input
+      let formattedDate = new Date().toISOString().split('T')[0];
+      if (income.date) {
+        try {
+          formattedDate = new Date(income.date).toISOString().split('T')[0];
+        } catch (e) {
+          formattedDate = income.date; // Fallback to original if parsing fails
+        }
+      }
+
       setFormData({
         description: income.description || '',
         gross: income.gross?.toString() || '',
@@ -44,12 +54,12 @@ const IncomeForm = ({
         tithe: income.tithe?.toString() || '',
         tithePercentage: income.tithePercentage?.toString() || '10',
         titheStatus: income.titheStatus || 'Pending',
-        date: income.date || new Date().toLocaleDateString(),
+        date: formattedDate,
         paycheckStatus: income.paycheckStatus || 'Received',
         notes: income.notes || ''
       });
     }
-    
+
     loadTemplates();
   }, [income]);
 

@@ -755,7 +755,7 @@ export default function ProfileScreen() {
                         { borderColor: colors?.inputBorder || theme.border, backgroundColor: colors?.inputBg || theme.surface },
                         themePreset === key && { borderColor: preset.colors.primary, borderWidth: 2 }
                       ]}
-                      onPress={() => changeThemePreset(key)}
+                      onPress={() => changeThemePreset(key, user?.UserId)}
                     >
                       <View style={styles.themeColorRow}>
                         <View style={[styles.themeColorDot, { backgroundColor: preset.colors.primary }]} />
@@ -781,7 +781,7 @@ export default function ProfileScreen() {
                         { borderColor: colors?.inputBorder || theme.border, backgroundColor: colors?.inputBg || theme.surface },
                         backgroundPreset === key && { borderColor: colors?.primary || theme.primary, borderWidth: 2 }
                       ]}
-                      onPress={() => changeBackgroundPreset(key)}
+                      onPress={() => changeBackgroundPreset(key, user?.UserId)}
                     >
                       <View style={styles.themeColorRow}>
                         <View style={[styles.themeColorDot, { backgroundColor: bg.dark, borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' }]} />

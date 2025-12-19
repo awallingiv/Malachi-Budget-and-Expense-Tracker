@@ -34,6 +34,37 @@ const TITHE_PERCENTAGE_KEY = '@tithe_percentage';
 
 const { width: screenWidth } = Dimensions.get('window');
 
+const PAGE_SIZE = 100;
+
+const fetchAllPages = async (fetchPage, limit = PAGE_SIZE) => {
+  const all = [];
+  let page = 1;
+
+  while (true) {
+    const response = await fetchPage(page, limit);
+    const pageData = Array.isArray(response?.data)
+      ? response.data
+      : Array.isArray(response)
+      ? response
+      : [];
+    const pagination = response?.pagination;
+
+    if (!pagination) {
+      return pageData;
+    }
+
+    all.push(...pageData);
+
+    if (!pagination.hasMore || pageData.length === 0) {
+      break;
+    }
+
+    page += 1;
+  }
+
+  return all;
+};
+
 // Default TableNames if user has no data
 const DEFAULT_TABLE_NAMES = ['Rent/Utilities', 'Subscriptions', 'Expenses'];
 
@@ -202,7 +233,7 @@ export default function MobileHomeScreen({ navigation }) {
     loadTithePercentage();
     const timer = setInterval(() => setCurrentTime(new Date()), 60000);
     return () => clearInterval(timer);
-  }, [user?.UserId]);
+  }, [user?.UserId, selectedMonth]);
 
   const loadTithePercentage = async () => {
     try {
@@ -229,10 +260,21 @@ export default function MobileHomeScreen({ navigation }) {
 
     try {
       setLoading(true);
+      const now = selectedMonth || new Date();
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      const startDate = startOfMonth.toISOString().split('T')[0];
+      const endDate = endOfMonth.toISOString().split('T')[0];
       const [stats, txns, income, cats] = await Promise.all([
-        budgetService.getDashboardStats(user.UserId).catch(() => null),
-        budgetService.getTransactions(user.UserId).catch(() => []),
-        budgetService.getIncome(user.UserId).catch(() => []),
+        budgetService.getDashboardStats(user.UserId, startDate, endDate).catch(() => null),
+        fetchAllPages(
+          (page, limit) => budgetService.getTransactions(user.UserId, { startDate, endDate, page, limit }),
+          PAGE_SIZE
+        ).catch(() => []),
+        fetchAllPages(
+          (page, limit) => budgetService.getIncome(user.UserId, startDate, endDate, page, limit),
+          PAGE_SIZE
+        ).catch(() => []),
         budgetService.getUserCategories(user.UserId).catch(() => []),
       ]);
 
@@ -315,8 +357,8 @@ export default function MobileHomeScreen({ navigation }) {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     }).format(amount || 0);
   };
 
@@ -874,7 +916,7 @@ export default function MobileHomeScreen({ navigation }) {
                         { borderColor: colors?.inputBorder || theme.border, backgroundColor: colors?.inputBg || theme.surface },
                         themePreset === key && { borderColor: preset.colors.primary, borderWidth: 2 }
                       ]}
-                      onPress={() => changeThemePreset(key)}
+                      onPress={() => changeThemePreset(key, user?.UserId)}
                     >
                       <View style={styles.themeColorRow}>
                         <View style={[styles.themeColorDot, { backgroundColor: preset.colors.primary }]} />
@@ -902,7 +944,7 @@ export default function MobileHomeScreen({ navigation }) {
                         { borderColor: colors?.inputBorder || theme.border, backgroundColor: colors?.inputBg || theme.surface },
                         backgroundPreset === key && { borderColor: colors?.primary || theme.primary, borderWidth: 2 }
                       ]}
-                      onPress={() => changeBackgroundPreset(key)}
+                      onPress={() => changeBackgroundPreset(key, user?.UserId)}
                     >
                       <View style={styles.themeColorRow}>
                         <View style={[styles.themeColorDot, { backgroundColor: bg.dark, borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' }]} />

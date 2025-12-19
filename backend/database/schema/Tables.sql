@@ -151,7 +151,7 @@ CREATE TABLE [dbo].[Income](
 	[Gross] [float] NULL,
 	[Tithe] [float] NULL,
 	[TitheStatus] [varchar](45) NULL,
-	[Date] [varchar](45) NULL,
+	[Date] [datetime] NULL,
 	[PaycheckStatus] [varchar](45) NULL,
 	[CreationTime] [datetime] NOT NULL,
 	[IncomeId] [uniqueidentifier] NOT NULL,

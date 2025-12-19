@@ -1140,7 +1140,7 @@ CREATE   PROCEDURE [dbo].[spmb_InsertIncome]
     @Gross          FLOAT       = NULL,
     @Tithe          FLOAT       = NULL,
     @TitheStatus    VARCHAR(45) = NULL,
-    @Date           VARCHAR(45) = NULL,
+    @Date           DATETIME    = NULL,
     @PaycheckStatus VARCHAR(45) = NULL
 AS
 BEGIN
@@ -1623,7 +1623,7 @@ CREATE   PROCEDURE [dbo].[spmb_UpdateIncome]
     @Gross FLOAT = NULL,
     @Tithe FLOAT = NULL,
     @TitheStatus VARCHAR(45) = NULL,
-    @Date VARCHAR(45) = NULL,
+    @Date DATETIME = NULL,
     @PaycheckStatus VARCHAR(45) = NULL,
     @Notes VARCHAR(MAX) = NULL
 AS

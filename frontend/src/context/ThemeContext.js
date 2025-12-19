@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useColorScheme } from 'react-native';
 import storage from '../utils/storage';
+import { preferencesService } from '../services/apiService';
 
 // Theme presets - matching web ModernDashboard
 export const THEME_PRESETS = {
@@ -439,10 +440,21 @@ export const ThemeProvider = ({ children }) => {
     setCurrentTheme(selectedTheme);
   };
 
-  const changeTheme = async (mode) => {
+  const changeTheme = async (mode, userId = null) => {
     try {
       setThemeMode(mode);
       await storage.setItem('themeMode', mode);
+
+      // Sync to backend if userId available
+      if (userId) {
+        try {
+          await preferencesService.updatePreferences(userId, {
+            Theme: mode,
+          });
+        } catch (err) {
+          console.error('Failed to sync theme mode to backend:', err);
+        }
+      }
     } catch (error) {
       console.error('Failed to save theme preference:', error);
     }
@@ -453,23 +465,72 @@ export const ThemeProvider = ({ children }) => {
     changeTheme(nextMode);
   };
 
-  const changeThemePreset = async (preset) => {
+  const changeThemePreset = async (preset, userId = null) => {
     try {
       setThemePreset(preset);
       await storage.setItem('themePreset', preset);
+
+      // Sync to backend if userId available
+      if (userId) {
+        try {
+          await preferencesService.updatePreferences(userId, {
+            ThemePreset: preset,
+          });
+        } catch (err) {
+          console.error('Failed to sync theme preset to backend:', err);
+        }
+      }
     } catch (error) {
       console.error('Failed to save theme preset:', error);
     }
   };
 
-  const changeBackgroundPreset = async (preset) => {
+  const changeBackgroundPreset = async (preset, userId = null) => {
     try {
       setBackgroundPreset(preset);
       await storage.setItem('backgroundPreset', preset);
+
+      // Sync to backend if userId available
+      if (userId) {
+        try {
+          await preferencesService.updatePreferences(userId, {
+            BackgroundPreset: preset,
+          });
+        } catch (err) {
+          console.error('Failed to sync background preset to backend:', err);
+        }
+      }
     } catch (error) {
       console.error('Failed to save background preset:', error);
     }
   };
+
+  // Sync theme preferences with backend (call after login)
+  const syncWithBackend = useCallback(async (userId) => {
+    if (!userId) return;
+
+    try {
+      const prefs = await preferencesService.getPreferences(userId);
+      if (prefs) {
+        // Update state and local storage with backend values
+        if (prefs.Theme) {
+          setThemeMode(prefs.Theme);
+          await storage.setItem('themeMode', prefs.Theme);
+        }
+        if (prefs.ThemePreset) {
+          setThemePreset(prefs.ThemePreset);
+          await storage.setItem('themePreset', prefs.ThemePreset);
+        }
+        if (prefs.BackgroundPreset) {
+          setBackgroundPreset(prefs.BackgroundPreset);
+          await storage.setItem('backgroundPreset', prefs.BackgroundPreset);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to sync theme preferences from backend:', error);
+      // Fall back to local storage (already loaded)
+    }
+  }, []);
 
   // Compute isDark based on themeMode
   const isDark = themeMode === 'dark' || (themeMode === 'auto' && systemColorScheme === 'dark');
@@ -490,6 +551,7 @@ export const ThemeProvider = ({ children }) => {
     changeThemePreset,
     changeBackgroundPreset,
     colors, // Computed colors based on presets
+    syncWithBackend, // Sync theme preferences with backend after login
   };
 
   return (

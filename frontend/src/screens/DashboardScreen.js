@@ -257,9 +257,11 @@ const DashboardScreen = () => {
                     {transaction.Description || 'No description'}
                   </Text>
                   <View style={styles.transactionDetails}>
-                    <Chip mode="outlined" compact style={styles.categoryChip}>
-                      {transaction.TableName || 'General'}
-                    </Chip>
+                    {transaction.TableName && (
+                      <Chip mode="outlined" compact style={styles.categoryChip}>
+                        {transaction.TableName}
+                      </Chip>
+                    )}
                     <Text variant="bodySmall" style={styles.transactionDate}>
                       {formatDate(transaction.Date || transaction.CreationTime)}
                     </Text>
