@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Platform, View, Text, SafeAreaView } from 'react-native';
 import { Provider as PaperProvider } from 'react-native-paper';
@@ -7,6 +7,7 @@ import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import ModernDashboard from './src/components/ModernDashboard';
 import MobileNavigator from './src/navigation/MobileNavigator';
 import LoginScreen from './src/screens/LoginScreen';
+import LandingPage from './src/screens/LandingPage';
 import WebVerifyEmailPage from './src/screens/WebVerifyEmailPage';
 import WebResetPasswordPage from './src/screens/WebResetPasswordPage';
 
@@ -16,6 +17,9 @@ function AppContent() {
   const authContext = useAuth();
   const user = authContext?.user;
   const isLoading = authContext?.isLoading;
+  
+  // State for web navigation (landing vs login/signup)
+  const [webView, setWebView] = useState('landing'); // 'landing', 'login', 'signup'
 
   // Sync theme preferences from backend when user logs in
   useEffect(() => {
@@ -28,6 +32,57 @@ function AppContent() {
       hasSyncedRef.current = false;
     }
   }, [user?.UserId, syncWithBackend]);
+
+  // Handle web URL routing
+  useEffect(() => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const path = window.location.pathname;
+      if (path === '/login') {
+        setWebView('login');
+      } else if (path === '/signup' || path === '/register') {
+        setWebView('signup');
+      } else {
+        setWebView('landing');
+      }
+      
+      // Listen for browser back/forward navigation
+      const handlePopState = () => {
+        const newPath = window.location.pathname;
+        if (newPath === '/login') {
+          setWebView('login');
+        } else if (newPath === '/signup' || newPath === '/register') {
+          setWebView('signup');
+        } else {
+          setWebView('landing');
+        }
+      };
+      
+      window.addEventListener('popstate', handlePopState);
+      return () => window.removeEventListener('popstate', handlePopState);
+    }
+  }, []);
+
+  // Navigation handlers for web
+  const navigateToLogin = () => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.history.pushState({}, '', '/login');
+    }
+    setWebView('login');
+  };
+
+  const navigateToSignup = () => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.history.pushState({}, '', '/signup');
+    }
+    setWebView('signup');
+  };
+
+  const navigateToLanding = () => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.history.pushState({}, '', '/');
+    }
+    setWebView('landing');
+  };
 
   if (!authContext) {
     return (
@@ -62,9 +117,12 @@ function AppContent() {
       return <WebResetPasswordPage />;
     }
 
-    // If not logged in, show login screen
+    // If not logged in, show landing page or login/signup based on navigation
     if (!user) {
-      return <LoginScreen />;
+      if (webView === 'login' || webView === 'signup') {
+        return <LoginScreen initialMode={webView === 'signup' ? 'register' : 'login'} onBack={navigateToLanding} />;
+      }
+      return <LandingPage onLogin={navigateToLogin} onSignup={navigateToSignup} />;
     }
 
     // Default web dashboard

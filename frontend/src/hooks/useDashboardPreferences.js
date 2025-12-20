@@ -205,7 +205,7 @@ export const useDashboardPreferences = (userId, isDark) => {
       ]);
 
       if (savedTheme) setSelectedThemePreset(savedTheme);
-      if (savedBackground) setSelectedBackground(savedBackground);
+      if (savedBg) setSelectedBackground(savedBg);
       if (savedVisibility) setWidgetVisibility(JSON.parse(savedVisibility));
     } catch (error) {
       console.error('Failed to load preferences:', error);

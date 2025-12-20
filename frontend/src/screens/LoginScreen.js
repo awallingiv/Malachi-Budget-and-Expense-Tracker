@@ -32,7 +32,7 @@ const colors = {
   error: '#ff6b6b',
 };
 
-export default function LoginScreen({ navigation }) {
+export default function LoginScreen({ navigation, initialMode = 'login', onBack }) {
   const [usernameOrEmail, setUsernameOrEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -41,7 +41,7 @@ export default function LoginScreen({ navigation }) {
   const [loginError, setLoginError] = useState('');
   const [registerError, setRegisterError] = useState('');
   const [isNewAccount, setIsNewAccount] = useState(false);
-  const [showRegister, setShowRegister] = useState(false);
+  const [showRegister, setShowRegister] = useState(initialMode === 'register');
   const [showForgotPasswordConfirm, setShowForgotPasswordConfirm] = useState(false);
   const [registerData, setRegisterData] = useState({
     username: '',
@@ -230,6 +230,13 @@ export default function LoginScreen({ navigation }) {
       <View style={styles.backgroundOrb1} />
       <View style={styles.backgroundOrb2} />
       <View style={styles.backgroundOrb3} />
+
+      {/* Back button for web navigation */}
+      {onBack && Platform.OS === 'web' && (
+        <TouchableOpacity style={styles.backButton} onPress={onBack}>
+          <Text style={styles.backButtonText}>← Back to Home</Text>
+        </TouchableOpacity>
+      )}
 
       <KeyboardAvoidingView 
         style={styles.keyboardView}
@@ -460,6 +467,23 @@ const styles = StyleSheet.create({
   },
   keyboardView: {
     flex: 1,
+  },
+  backButton: {
+    position: 'absolute',
+    top: Platform.OS === 'web' ? 24 : 50,
+    left: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    zIndex: 100,
+  },
+  backButtonText: {
+    color: colors.textMuted,
+    fontSize: 14,
+    fontWeight: '500',
   },
   content: {
     flex: 1,

@@ -662,9 +662,9 @@ const ModernDashboard = () => {
         case 'date-desc':
           return new Date(dateB) - new Date(dateA);
         case 'amount-asc':
-          return parseFloat(a.NetAmount || 0) - parseFloat(b.NetAmount || 0);
+          return parseFloat(a.Net || 0) - parseFloat(b.Net || 0);
         case 'amount-desc':
-          return parseFloat(b.NetAmount || 0) - parseFloat(a.NetAmount || 0);
+          return parseFloat(b.Net || 0) - parseFloat(a.Net || 0);
         default:
           return new Date(dateB) - new Date(dateA);
       }
