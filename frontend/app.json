@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Malachi",
-    "slug": "malachi",
+    "slug": "Malachi",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -16,23 +16,25 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.reactbudget.app"
+      "bundleIdentifier": "com.Malachi.app"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FFFFFF"
       },
-      "package": "com.reactbudget.app"
+      "package": "com.Malachi.app"
     },
     "web": {
       "favicon": "./assets/favicon.png",
       "bundler": "metro"
     },
     "extra": {
+      "apiUrl": "https://budget.austinwalling.dev/api",
       "eas": {
-        "projectId": "90b4338e-6156-4c05-89f0-9f3a4610296f"
+        "projectId": "9b828dca-6fa4-4fdd-9add-4ab7a1a6633b"
       }
-    }
+    },
+    "owner": "awallingiv"
   }
 }

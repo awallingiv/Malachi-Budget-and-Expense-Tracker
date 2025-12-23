@@ -1450,7 +1450,7 @@ const ModernDashboard = () => {
 
         {/* Consolidated Financial Summary */}
         {widgetVisibility.financialSummary && (
-        <AnimatedCard delay={0} cardStyle={dynamicStyles.card} style={[styles.financialSummaryCard, { padding: isMobile ? 12 : 16 }]}>
+        <AnimatedCard delay={0} cardStyle={dynamicStyles.card} style={[styles.financialSummaryCard, { padding: isMobile ? 12 : 16, borderColor: colors.cardBorder }]}>
           <View style={[
             styles.financialSummaryRow,
             {
@@ -1527,7 +1527,7 @@ const ModernDashboard = () => {
             <View style={[styles.smallWidgetRow, { flexDirection: isSmallMobile ? 'column' : 'row', gap: isMobile ? 12 : 16 }]}>
               {/* Top Groupings */}
               {widgetVisibility.topGroupings && topGroupingsList.length > 0 && (
-                <AnimatedCard delay={130} cardStyle={dynamicStyles.card} style={[styles.quarterWidgetCard, { padding: isMobile ? 10 : 12, minHeight: isSmallMobile ? 130 : isMobile ? 150 : 200 }]}>
+                <AnimatedCard delay={130} cardStyle={dynamicStyles.card} style={[styles.quarterWidgetCard, { padding: isMobile ? 10 : 12, minHeight: isSmallMobile ? 130 : isMobile ? 150 : 200, borderColor: colors.cardBorder }]}>
                   <Text style={[styles.compactWidgetTitle, { color: colors.text, fontSize: isSmallMobile ? 10 : 11 }]}>📁 Top Groupings</Text>
                   {topGroupingsList.slice(0, 4).map((grp) => (
                     <View key={grp.GroupingID} style={styles.compactRowTight}>
@@ -1544,29 +1544,19 @@ const ModernDashboard = () => {
 
               {/* Categories by Group */}
               {widgetVisibility.categoriesByGroup && (
-                <AnimatedCard delay={140} cardStyle={dynamicStyles.card} style={[styles.quarterWidgetCard, { padding: isMobile ? 10 : 12, minHeight: isSmallMobile ? 130 : isMobile ? 150 : 200 }]}>
-                  <View style={styles.inlineTitleRow}>
-                    <Text style={[styles.compactWidgetTitle, { color: colors.text }]}>📊</Text>
-                    <TouchableOpacity
-                      style={[styles.inlineDropdown, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder }]}
-                      onPress={() => {
-                        if (!selectedGroupingForCategories && groupings.length > 0) {
-                          setSelectedGroupingForCategories(groupings[0].GroupingID);
-                        } else if (selectedGroupingForCategories) {
-                          const currentIndex = groupings.findIndex(g => g.GroupingID === selectedGroupingForCategories);
-                          const nextIndex = (currentIndex + 1) % groupings.length;
-                          setSelectedGroupingForCategories(groupings[nextIndex].GroupingID);
-                        }
-                      }}
-                    >
-                      <Text style={[styles.inlineDropdownText, { color: colors.text }]} numberOfLines={1}>
-                        {selectedGroupingForCategories 
-                          ? groupings.find(g => g.GroupingID === selectedGroupingForCategories)?.GroupingName || 'Select'
-                          : 'Select group'}
-                      </Text>
-                      <Text style={{ color: colors.textMuted, fontSize: 10 }}>▼</Text>
-                    </TouchableOpacity>
-                  </View>
+                <AnimatedCard delay={140} cardStyle={dynamicStyles.card} style={[styles.quarterWidgetCard, { padding: isMobile ? 10 : 12, minHeight: isSmallMobile ? 130 : isMobile ? 150 : 200, borderColor: colors.cardBorder }]}>
+                  <Text style={[styles.compactWidgetTitle, { color: colors.text, fontSize: isSmallMobile ? 10 : 11, marginBottom: 8 }]}>📊 Categories</Text>
+                  <ModalSelect
+                    label=""
+                    value={selectedGroupingForCategories 
+                      ? groupings.find(g => g.GroupingID === selectedGroupingForCategories)?.GroupingName || 'Select'
+                      : 'Select group'}
+                    options={groupings.map(g => g.GroupingName)}
+                    onSelect={(name) => {
+                      const grp = groupings.find(g => g.GroupingName === name);
+                      if (grp) setSelectedGroupingForCategories(grp.GroupingID);
+                    }}
+                  />
                   {categoriesInGroupingList.length > 0 ? (
                     categoriesInGroupingList.slice(0, 4).map((cat) => (
                       <View key={cat.Category} style={styles.compactRowTight}>
@@ -1587,7 +1577,7 @@ const ModernDashboard = () => {
 
             {/* Income Widget */}
             {widgetVisibility.income && (
-              <AnimatedCard delay={145} cardStyle={dynamicStyles.card} style={[styles.incomeWidgetFull, { padding: isMobile ? 10 : 12, maxHeight: isMobile ? 300 : 450 }]}>
+              <AnimatedCard delay={145} cardStyle={dynamicStyles.card} style={[styles.incomeWidgetFull, { padding: isMobile ? 10 : 12, maxHeight: isMobile ? 300 : 450, borderColor: colors.cardBorder }]}>
                 <View style={styles.listHeader}>
                   <Text style={[styles.sectionTitle, { color: colors.text }]}>💵 Income</Text>
                   <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -1614,7 +1604,7 @@ const ModernDashboard = () => {
 
           {/* Right Column - Spending Chart */}
           {widgetVisibility.spending && categoryList.length > 0 && (
-            <AnimatedCard delay={150} cardStyle={dynamicStyles.card} style={[styles.spendingWidgetTall, { padding: isMobile ? 10 : 12, minHeight: isMobile ? 250 : 350 }]}>
+            <AnimatedCard delay={150} cardStyle={dynamicStyles.card} style={[styles.spendingWidgetTall, { padding: isMobile ? 10 : 12, minHeight: isMobile ? 250 : 350, borderColor: colors.cardBorder }]}>
               <TouchableOpacity 
                 style={styles.chartHeader} 
                 onPress={() => setShowSpendingChart(!showSpendingChart)}

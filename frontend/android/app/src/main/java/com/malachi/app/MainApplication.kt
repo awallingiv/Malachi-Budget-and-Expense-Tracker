@@ -1,4 +1,4 @@
-package com.reactbudget.app
+package com.Malachi.app
 
 import android.app.Application
 import android.content.res.Configuration

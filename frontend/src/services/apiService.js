@@ -27,16 +27,24 @@ const resolveApiBaseUrl = () => {
     return envOverride.replace(/\/$/, '');
   }
 
-  // Production web builds use relative URL (nginx proxies /api to backend)
-  // But only if we're NOT on localhost (localhost means local testing of prod build)
-  if (!__DEV__ && Platform.OS === 'web') {
+  // Web platform: determine if production or development
+  if (Platform.OS === 'web') {
     const isLocalhost = typeof window !== 'undefined' && 
       (window.location?.hostname === 'localhost' || window.location?.hostname === '127.0.0.1');
     
+    // Production web deployment (not localhost) - use relative URL for nginx proxy
     if (!isLocalhost) {
-      console.log('🚀 Production web mode - using relative /api URL');
+      console.log('🚀 Production web mode - using relative /api URL (nginx proxy)');
       return '/api';
     }
+    
+    // Development or testing on localhost
+    if (__DEV__) {
+      console.log('🧪 Development web mode - using localhost:3002');
+      return 'http://localhost:3002/api';
+    }
+    
+    // Production build but running on localhost (testing)
     console.log('🧪 Production build on localhost - using localhost:3002');
     return 'http://localhost:3002/api';
   }
