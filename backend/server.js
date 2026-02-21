@@ -40,7 +40,11 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
-app.use('/api', limiter);
+if (process.env.RATE_LIMIT_ENABLED !== 'false') {
+  app.use('/api', limiter);
+} else {
+  console.log('⚠️  Rate limiting disabled (RATE_LIMIT_ENABLED=false)');
+}
 
 // Health check endpoint
 app.get('/health', async (req, res) => {
