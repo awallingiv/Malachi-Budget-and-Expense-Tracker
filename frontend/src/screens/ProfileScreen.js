@@ -15,7 +15,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useTheme, THEME_PRESETS, BACKGROUND_PRESETS } from '../context/ThemeContext';
-import { budgetService } from '../services/apiService';
+import { budgetService, preferencesService } from '../services/apiService';
 import { Ionicons } from '@expo/vector-icons';
 import storage from '../utils/storage';
 
@@ -85,9 +85,37 @@ export default function ProfileScreen() {
   useEffect(() => {
     if (user?.UserId) {
       loadUserData();
+      loadTitheTrackingPreference();
     }
     loadTithePercentage();
   }, [user?.UserId]);
+
+  const loadTitheTrackingPreference = async () => {
+    try {
+      const prefs = await preferencesService.getPreferences(user.UserId);
+      if (prefs && prefs.TitheTrackingEnabled !== undefined) {
+        setSettings(prev => ({ ...prev, autoTithe: !!prefs.TitheTrackingEnabled }));
+      }
+    } catch (err) {
+      console.error('Failed to load tithe tracking preference:', err);
+    }
+  };
+
+  const toggleTitheTracking = async () => {
+    const newValue = !settings.autoTithe;
+    setSettings(prev => ({ ...prev, autoTithe: newValue }));
+    try {
+      await preferencesService.updatePreferences(user.UserId, {
+        TitheTrackingEnabled: newValue
+      });
+      setSuccess(newValue ? 'Tithe tracking enabled' : 'Tithe tracking disabled');
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err) {
+      console.error('Failed to update tithe tracking:', err);
+      setSettings(prev => ({ ...prev, autoTithe: !newValue }));
+      setError('Failed to update tithe tracking setting');
+    }
+  };
 
   const loadTithePercentage = async () => {
     try {
@@ -439,9 +467,9 @@ export default function ProfileScreen() {
           {/* Auto Tithe Toggle */}
           <View style={styles.settingRow}>
             <View style={styles.settingInfo}>
-              <Text style={[styles.settingLabel, { color: theme.text }]}>Auto Tithe Calculation</Text>
+              <Text style={[styles.settingLabel, { color: theme.text }]}>Giving Tracker</Text>
               <Text style={[styles.settingDesc, { color: theme.textSecondary }]}>
-                Automatically calculate tithe
+                Auto-create giving expenses from income
               </Text>
             </View>
             <TouchableOpacity
@@ -449,7 +477,7 @@ export default function ProfileScreen() {
                 styles.toggle,
                 { backgroundColor: settings.autoTithe ? theme.primary : theme.surface }
               ]}
-              onPress={() => setSettings(prev => ({ ...prev, autoTithe: !prev.autoTithe }))}
+              onPress={toggleTitheTracking}
             >
               <View style={[
                 styles.toggleThumb,

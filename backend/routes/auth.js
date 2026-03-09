@@ -42,10 +42,14 @@ router.post('/register', [
   body('name')
     .optional()
     .isLength({ max: 25 })
-    .withMessage('Name must be max 25 characters')
+    .withMessage('Name must be max 25 characters'),
+  body('enableTitheTracking')
+    .optional()
+    .isBoolean()
+    .withMessage('enableTitheTracking must be a boolean')
 ], handleValidationErrors, async (req, res) => {
   try {
-    const { username, password, email, name } = req.body;
+    const { username, password, email, name, enableTitheTracking } = req.body;
 
     // Hash password with bcrypt (salt rounds = 10)
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -64,12 +68,26 @@ router.post('/register', [
       try {
         await executeStoredProcedure('spmb_InitializeDefaultGroupings', {
           UserID: { type: sql.UniqueIdentifier, value: response.UserId },
-          Username: { type: sql.VarChar(17), value: username }
+          Username: { type: sql.VarChar(17), value: username },
+          EnableTithe: { type: sql.Bit, value: enableTitheTracking ? 1 : 0 }
         });
-        console.log(`✅ Default groupings initialized for user: ${username}`);
+        console.log(`✅ Default groupings initialized for user: ${username} (tithe: ${!!enableTitheTracking})`);
       } catch (groupingError) {
         console.error(`⚠️ Failed to initialize groupings for ${username}:`, groupingError);
         // Don't block registration if groupings fail
+      }
+
+      // If tithe tracking enabled, set the preference
+      if (enableTitheTracking) {
+        try {
+          await executeStoredProcedure('spmb_UpdateUserPreferences', {
+            UserId: { type: sql.UniqueIdentifier, value: response.UserId },
+            TitheTrackingEnabled: { type: sql.Bit, value: 1 }
+          });
+          console.log(`✅ Tithe tracking enabled for user: ${username}`);
+        } catch (prefError) {
+          console.error(`⚠️ Failed to set tithe preference for ${username}:`, prefError);
+        }
       }
 
       // Send validation email asynchronously (don't block response)

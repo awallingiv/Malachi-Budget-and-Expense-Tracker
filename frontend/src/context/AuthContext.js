@@ -77,9 +77,9 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const register = async (username, password, email, name) => {
+  const register = async (username, password, email, name, enableTitheTracking) => {
     try {
-      const response = await authService.register(username, password, email, name);
+      const response = await authService.register(username, password, email, name, enableTitheTracking);
       if (response.Success) {
         return { 
           success: true, 

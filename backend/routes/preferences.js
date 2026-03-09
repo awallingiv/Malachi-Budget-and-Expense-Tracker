@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { body, param, validationResult } = require('express-validator');
-const { executeQuery } = require('../config/database');
+const { executeQuery, executeStoredProcedure, sql } = require('../config/database');
 const { protect } = require('../middleware/auth');
 const cache = require('../services/cacheService');
 
@@ -87,6 +87,7 @@ router.put('/:userId',
   body('ThemePreset').optional().isString().isLength({ max: 30 }),
   body('BackgroundPreset').optional().isString().isLength({ max: 30 }),
   body('WidgetVisibility').optional().isObject(),
+  body('TitheTrackingEnabled').optional().isBoolean(),
   async (req, res) => {
     try {
       const errors = validationResult(req);
@@ -105,6 +106,7 @@ router.put('/:userId',
         LastExpenseCategory,
         LastIncomeTemplate,
         CustomTithePercentage,
+        TitheTrackingEnabled,
         MerchantDefaults,
         Theme,
         DefaultCurrency,
@@ -113,12 +115,29 @@ router.put('/:userId',
         WidgetVisibility
       } = req.body;
 
+      // If enabling tithe tracking, ensure the Tithe grouping exists
+      if (TitheTrackingEnabled === true) {
+        try {
+          await executeStoredProcedure('spmb_EnsureTitheGrouping', {
+            UserID: { type: sql.UniqueIdentifier, value: userId },
+            Username: { type: sql.VarChar(17), value: req.user.Username }
+          });
+          // Invalidate groupings cache so the new grouping appears
+          await cache.invalidatePattern(`groupings:${userId}`);
+          console.log(`✅ Tithe grouping ensured for user: ${req.user.Username}`);
+        } catch (groupingError) {
+          console.error(`⚠️ Failed to ensure tithe grouping:`, groupingError);
+          // Don't block the preferences update
+        }
+      }
+
       const result = await executeQuery(
         `EXEC spmb_UpdateUserPreferences
           @UserId,
           @LastExpenseCategory,
           @LastIncomeTemplate,
           @CustomTithePercentage,
+          @TitheTrackingEnabled,
           @MerchantDefaults,
           @Theme,
           @DefaultCurrency,
@@ -130,6 +149,7 @@ router.put('/:userId',
           LastExpenseCategory: LastExpenseCategory || null,
           LastIncomeTemplate: LastIncomeTemplate ? JSON.stringify(LastIncomeTemplate) : null,
           CustomTithePercentage: CustomTithePercentage || null,
+          TitheTrackingEnabled: TitheTrackingEnabled != null ? TitheTrackingEnabled : null,
           MerchantDefaults: MerchantDefaults ? JSON.stringify(MerchantDefaults) : null,
           Theme: Theme || null,
           DefaultCurrency: DefaultCurrency || null,

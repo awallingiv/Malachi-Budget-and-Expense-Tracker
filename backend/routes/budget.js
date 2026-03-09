@@ -1660,10 +1660,53 @@ router.post('/income', [
     // Invalidate dashboard cache after creating income
     await cache.invalidatePattern(`dashboard:${UserID}:*`);
 
+    // Auto-create tithe transaction if tithe tracking is enabled and tithe > 0
+    let titheTransactionId = null;
+    if (Tithe && parseFloat(Tithe) > 0) {
+      try {
+        // Check if user has tithe tracking enabled
+        const prefsResult = await executeStoredProcedure('spmb_GetUserPreferences', {
+          UserId: { type: sql.UniqueIdentifier, value: UserID }
+        });
+        const prefs = prefsResult.recordset?.[0];
+
+        if (prefs?.TitheTrackingEnabled) {
+          // Find the user's system Tithe grouping
+          const groupingsResult = await executeQuery(
+            `SELECT GroupingID FROM Groupings WHERE UserID = @UserID AND GroupingName = N'Tithe' AND IsSystem = 1 AND IsActive = 1`,
+            { UserID: UserID }
+          );
+          const titheGrouping = groupingsResult.recordset?.[0];
+
+          if (titheGrouping) {
+            const titheResult = await executeStoredProcedure('spmb_InsertTransaction', {
+              UserID: { type: sql.UniqueIdentifier, value: UserID },
+              Username: { type: sql.VarChar(17), value: Username },
+              Name: { type: sql.VarChar(150), value: `Tithe - ${Description || 'Income'}` },
+              Amount: { type: sql.Float, value: parseFloat(Tithe) },
+              Due: { type: sql.DateTime, value: null },
+              Date: { type: sql.DateTime, value: Date ? new Date(Date) : new Date() },
+              Notes: { type: sql.VarChar(60), value: `AUTO_TITHE:${response.NewIncomeID}` },
+              Category: { type: sql.VarChar(50), value: 'Tithe' },
+              Status: { type: sql.VarChar(20), value: TitheStatus || 'Pending' },
+              GroupingID: { type: sql.UniqueIdentifier, value: titheGrouping.GroupingID },
+              CategoryID: { type: sql.UniqueIdentifier, value: null }
+            });
+            titheTransactionId = titheResult.recordset?.[0]?.NewTransactionId;
+            console.log(`✅ Auto-created tithe transaction ${titheTransactionId} for income ${response.NewIncomeID}`);
+          }
+        }
+      } catch (titheError) {
+        console.error('⚠️ Failed to auto-create tithe transaction:', titheError);
+        // Don't fail the income creation
+      }
+    }
+
     res.status(201).json({
       success: true,
       message: 'Income record created successfully',
-      incomeId: response.NewIncomeID
+      incomeId: response.NewIncomeID,
+      titheTransactionId
     });
   } catch (error) {
     console.error('Create income error:', error);
@@ -2101,6 +2144,76 @@ router.put('/income/:incomeId', [
     await cache.invalidatePattern(`dashboard:${UserID}:*`);
 
     if (response.Success) {
+      // Auto-update or create paired tithe transaction
+      try {
+        const prefsResult = await executeStoredProcedure('spmb_GetUserPreferences', {
+          UserId: { type: sql.UniqueIdentifier, value: UserID }
+        });
+        const prefs = prefsResult.recordset?.[0];
+
+        if (prefs?.TitheTrackingEnabled) {
+          // Find existing auto-tithe transaction linked to this income
+          const existingTithe = await executeQuery(
+            `SELECT TransactionId FROM Transactions WHERE UserID = @UserID AND Notes = @Notes`,
+            { UserID: UserID, Notes: `AUTO_TITHE:${incomeId}` }
+          );
+
+          const titheAmount = Tithe != null ? parseFloat(Tithe) : null;
+
+          if (existingTithe.recordset?.length > 0 && titheAmount != null) {
+            // Update existing tithe transaction
+            const txnId = existingTithe.recordset[0].TransactionId;
+            if (titheAmount > 0) {
+              await executeQuery(
+                `UPDATE Transactions SET Name = @Name, Amount = @Amount, Date = @Date, Status = @Status, LastEdit = GETDATE() WHERE TransactionId = @TxnId AND UserID = @UserID`,
+                {
+                  Name: `Tithe - ${Description || 'Income'}`,
+                  Amount: titheAmount,
+                  Date: Date ? new Date(Date) : null,
+                  Status: TitheStatus || 'Pending',
+                  TxnId: txnId,
+                  UserID: UserID
+                }
+              );
+              console.log(`✅ Updated tithe transaction ${txnId} for income ${incomeId}`);
+            } else {
+              // Tithe set to 0 — remove the auto transaction
+              await executeStoredProcedure('spmb_DeleteTransaction', {
+                TransactionId: { type: sql.UniqueIdentifier, value: txnId },
+                UserID: { type: sql.UniqueIdentifier, value: UserID }
+              });
+              console.log(`🗑️ Removed tithe transaction ${txnId} (tithe set to 0)`);
+            }
+          } else if (!existingTithe.recordset?.length && titheAmount > 0) {
+            // No existing tithe transaction — create one
+            const groupingsResult = await executeQuery(
+              `SELECT GroupingID FROM Groupings WHERE UserID = @UserID AND GroupingName = N'Tithe' AND IsSystem = 1 AND IsActive = 1`,
+              { UserID: UserID }
+            );
+            const titheGrouping = groupingsResult.recordset?.[0];
+
+            if (titheGrouping) {
+              await executeStoredProcedure('spmb_InsertTransaction', {
+                UserID: { type: sql.UniqueIdentifier, value: UserID },
+                Username: { type: sql.VarChar(17), value: req.user.Username },
+                Name: { type: sql.VarChar(150), value: `Tithe - ${Description || 'Income'}` },
+                Amount: { type: sql.Float, value: titheAmount },
+                Due: { type: sql.DateTime, value: null },
+                Date: { type: sql.DateTime, value: Date ? new Date(Date) : new Date() },
+                Notes: { type: sql.VarChar(60), value: `AUTO_TITHE:${incomeId}` },
+                Category: { type: sql.VarChar(50), value: 'Tithe' },
+                Status: { type: sql.VarChar(20), value: TitheStatus || 'Pending' },
+                GroupingID: { type: sql.UniqueIdentifier, value: titheGrouping.GroupingID },
+                CategoryID: { type: sql.UniqueIdentifier, value: null }
+              });
+              console.log(`✅ Created tithe transaction for updated income ${incomeId}`);
+            }
+          }
+        }
+      } catch (titheError) {
+        console.error('⚠️ Failed to sync tithe transaction on income update:', titheError);
+      }
+
       res.json({
         success: true,
         message: 'Income record updated successfully'
@@ -2167,6 +2280,24 @@ router.delete('/income/:incomeId', [
     if (response.Success) {
       // Invalidate dashboard cache after deleting income
       await cache.invalidatePattern(`dashboard:${userId}:*`);
+
+      // Also delete any auto-created tithe transaction linked to this income
+      try {
+        const titheResult = await executeQuery(
+          `SELECT TransactionId FROM Transactions WHERE UserID = @UserID AND Notes = @Notes`,
+          { UserID: userId, Notes: `AUTO_TITHE:${incomeId}` }
+        );
+        if (titheResult.recordset?.length > 0) {
+          const txnId = titheResult.recordset[0].TransactionId;
+          await executeStoredProcedure('spmb_DeleteTransaction', {
+            TransactionId: { type: sql.UniqueIdentifier, value: txnId },
+            UserID: { type: sql.UniqueIdentifier, value: userId }
+          });
+          console.log(`🗑️ Deleted paired tithe transaction ${txnId} for income ${incomeId}`);
+        }
+      } catch (titheCleanupError) {
+        console.error('⚠️ Failed to cleanup tithe transaction on income delete:', titheCleanupError);
+      }
 
       res.json({
         success: true,

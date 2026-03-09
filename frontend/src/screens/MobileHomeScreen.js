@@ -19,7 +19,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useTheme, THEME_PRESETS, BACKGROUND_PRESETS } from '../context/ThemeContext';
-import { budgetService } from '../services/apiService';
+import { budgetService, preferencesService } from '../services/apiService';
 import MobileFAB from '../components/MobileFAB';
 import MonthSelector from '../components/MonthSelector';
 import { TableSection } from '../components/ExpandableCategory';
@@ -225,10 +225,17 @@ export default function MobileHomeScreen({ navigation }) {
 
   // Tithe percentage
   const [tithePercentage, setTithePercentage] = useState(10);
+  const [titheTrackingEnabled, setTitheTrackingEnabled] = useState(false);
 
   useEffect(() => {
     if (user?.UserId) {
       loadAllData();
+      // Load tithe tracking preference
+      preferencesService.getPreferences(user.UserId).then(prefs => {
+        if (prefs && prefs.TitheTrackingEnabled !== undefined) {
+          setTitheTrackingEnabled(!!prefs.TitheTrackingEnabled);
+        }
+      }).catch(err => console.error('Failed to load tithe preference:', err));
     }
     loadTithePercentage();
     const timer = setInterval(() => setCurrentTime(new Date()), 60000);
@@ -248,12 +255,12 @@ export default function MobileHomeScreen({ navigation }) {
 
   // Auto-calculate tithe using custom percentage
   useEffect(() => {
-    if (incomeForm.Gross) {
+    if (titheTrackingEnabled && incomeForm.Gross) {
       const gross = parseFloat(incomeForm.Gross) || 0;
       const tithe = (gross * (tithePercentage / 100)).toFixed(2);
       setIncomeForm(prev => ({ ...prev, Tithe: tithe }));
     }
-  }, [incomeForm.Gross, tithePercentage]);
+  }, [incomeForm.Gross, tithePercentage, titheTrackingEnabled]);
 
   const loadAllData = async () => {
     if (!user?.UserId) return;
@@ -837,6 +844,7 @@ export default function MobileHomeScreen({ navigation }) {
                 theme={theme}
               />
 
+              {titheTrackingEnabled && (
               <ModalInput
                 label={`Tithe (${tithePercentage}% auto-calculated)`}
                 value={incomeForm.Tithe}
@@ -845,6 +853,7 @@ export default function MobileHomeScreen({ navigation }) {
                 keyboardType="decimal-pad"
                 theme={theme}
               />
+              )}
 
               <ModalInput
                 label="Date"

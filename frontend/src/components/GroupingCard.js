@@ -130,6 +130,7 @@ const GroupingCard = ({
           </View>
           <Text style={[styles.subtitle, { color: colors.textMuted, fontSize: isSmallMobile ? 10 : 11 }]}>
             {transactionCount} transaction{transactionCount !== 1 ? 's' : ''}
+            {grouping.IsSystem ? '  ⛪ Auto-tracked' : ''}
           </Text>
         </View>
         <View style={[styles.headerControls, isMobile && { gap: 4 }]}>

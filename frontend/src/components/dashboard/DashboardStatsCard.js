@@ -10,6 +10,7 @@ import { View, Text, StyleSheet } from 'react-native';
  * @param {number} props.netPosition - Net position (income - expenses)
  * @param {number} props.savingsRate - Savings rate percentage
  * @param {Object} props.colors - Theme-aware color palette
+ * @param {boolean} props.titheTrackingEnabled - Whether tithe tracking is enabled
  * @param {Object} props.style - Additional container styles
  */
 const DashboardStatsCard = ({
@@ -18,6 +19,7 @@ const DashboardStatsCard = ({
   netPosition = 0,
   savingsRate = 0,
   colors = {},
+  titheTrackingEnabled = false,
   style,
 }) => {
   const formatCurrency = (amount) => {
@@ -65,12 +67,14 @@ const DashboardStatsCard = ({
         </View>
 
         {/* Tithe */}
+        {titheTrackingEnabled && (
         <View style={styles.statItem}>
           <Text style={[styles.statLabel, { color: colors.textMuted }]}>Total Tithe</Text>
           <Text style={[styles.statValue, { color: colors.accent }]}>
             {formatCurrency(incomeTotals.totalTithe)}
           </Text>
         </View>
+        )}
 
         {/* Expenses */}
         <View style={styles.statItem}>

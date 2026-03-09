@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { View, StyleSheet, Alert, KeyboardAvoidingView, Platform, ScrollView, TouchableOpacity } from 'react-native';
 import { Text, TextInput, Button, Card } from 'react-native-paper';
 import { useAuth } from '../context/AuthContext';
 
@@ -9,6 +9,7 @@ export default function RegisterScreen({ navigation }) {
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [enableTitheTracking, setEnableTitheTracking] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const { register } = useAuth();
 
@@ -38,7 +39,7 @@ export default function RegisterScreen({ navigation }) {
     setIsLoading(true);
     
     try {
-      const result = await register(username, password, email, name);
+      const result = await register(username, password, email, name, enableTitheTracking);
       console.log('📥 Register result:', result);
       setIsLoading(false);
 
@@ -127,7 +128,26 @@ export default function RegisterScreen({ navigation }) {
             <Text variant="bodySmall" style={styles.note}>
               * Required fields. Password limited to 16 characters.
             </Text>
-            
+
+            {/* Tithe Tracking Opt-In */}
+            <TouchableOpacity
+              style={styles.titheOptIn}
+              onPress={() => setEnableTitheTracking(!enableTitheTracking)}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.checkbox, enableTitheTracking && styles.checkboxChecked]}>
+                {enableTitheTracking && <Text style={styles.checkMark}>✓</Text>}
+              </View>
+              <View style={styles.titheOptInText}>
+                <Text variant="bodyMedium" style={styles.titheOptInTitle}>
+                  Track charitable giving
+                </Text>
+                <Text variant="bodySmall" style={styles.titheOptInDesc}>
+                  Automatically calculate a percentage of your income and track it as an expense. You can change this anytime in Settings.
+                </Text>
+              </View>
+            </TouchableOpacity>
+
             <Button
               mode="contained"
               onPress={handleRegister}
@@ -184,5 +204,47 @@ const styles = StyleSheet.create({
   },
   linkButton: {
     marginTop: 10,
+  },
+  titheOptIn: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    backgroundColor: '#f0f0ff',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e0e0f0',
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: '#6200ee',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    marginTop: 2,
+  },
+  checkboxChecked: {
+    backgroundColor: '#6200ee',
+  },
+  checkMark: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  titheOptInText: {
+    flex: 1,
+  },
+  titheOptInTitle: {
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  titheOptInDesc: {
+    color: '#666',
+    lineHeight: 18,
   },
 });

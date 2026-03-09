@@ -339,7 +339,7 @@ const TransactionRow = ({ transaction, onEdit, onDelete, colors }) => {
 };
 
 // Income row component
-const IncomeRow = ({ income, onEdit, colors }) => {
+const IncomeRow = ({ income, onEdit, colors, titheTrackingEnabled }) => {
   // Fallback to default colors if not provided
   const c = colors || defaultColors;
   
@@ -358,7 +358,7 @@ const IncomeRow = ({ income, onEdit, colors }) => {
           {income.Description || 'Income'}
         </Text>
         <Text style={[styles.transactionCategory, { color: c.textDim }]}>
-          {formatDate(income.Date)} • Tithe: ${(income.Tithe || 0).toFixed(2)}
+          {formatDate(income.Date)}{titheTrackingEnabled ? ` • Tithe: $${(income.Tithe || 0).toFixed(2)}` : ''}
         </Text>
       </View>
       <View style={styles.incomeAmounts}>
@@ -410,6 +410,7 @@ const ModernDashboard = () => {
     setSelectedBackground,
     widgetVisibility,
     setWidgetVisibility,
+    titheTrackingEnabled,
     loading: preferencesLoading,
     colors,
   } = useDashboardPreferences(user?.UserId, isDark);
@@ -458,8 +459,8 @@ const ModernDashboard = () => {
     Net: '',
     Tithe: '',
     Date: today,
-    TitheStatus: 'unpaid',
-    PaycheckStatus: 'received'
+    TitheStatus: 'Pending',
+    PaycheckStatus: 'Received'
   });
   
   const [expenseForm, setExpenseForm] = useState({
@@ -689,7 +690,7 @@ const ModernDashboard = () => {
   const totalNet = filteredIncome.reduce((sum, i) => sum + (parseFloat(i.Net) || 0), 0);
   const totalTitheOwed = filteredIncome.reduce((sum, i) => sum + (parseFloat(i.Tithe) || 0), 0);
   const totalTithePaid = filteredIncome.reduce((sum, i) => {
-    if (i.TitheStatus === 'paid') {
+    if ((i.TitheStatus || '').toLowerCase() === 'paid') {
       return sum + (parseFloat(i.Tithe) || 0);
     }
     return sum;
@@ -868,12 +869,12 @@ const ModernDashboard = () => {
 
   // Auto-calculate tithe (10%)
   useEffect(() => {
-    if (incomeForm.Gross) {
+    if (titheTrackingEnabled && incomeForm.Gross) {
       const gross = parseFloat(incomeForm.Gross) || 0;
       const tithe = gross * 0.1;
       setIncomeForm(prev => ({ ...prev, Tithe: tithe.toFixed(2) }));
     }
-  }, [incomeForm.Gross]);
+  }, [incomeForm.Gross, titheTrackingEnabled]);
 
   // CRUD Operations
   const handleSaveIncome = async () => {
@@ -1152,8 +1153,8 @@ const ModernDashboard = () => {
       Net: '',
       Tithe: '',
       Date: today,
-      TitheStatus: 'unpaid',
-      PaycheckStatus: 'received'
+      TitheStatus: 'Pending',
+      PaycheckStatus: 'Received'
     });
     setEditingItem(null);
   };
@@ -1178,8 +1179,8 @@ const ModernDashboard = () => {
       Net: (income.Net || 0).toString(),
       Tithe: (income.Tithe || 0).toString(),
       Date: income.Date || new Date().toISOString().split('T')[0],
-      TitheStatus: income.TitheStatus || 'unpaid',
-      PaycheckStatus: income.PaycheckStatus || 'received'
+      TitheStatus: income.TitheStatus || 'Pending',
+      PaycheckStatus: income.PaycheckStatus || 'Received'
     });
     setShowIncomeModal(true);
   };
@@ -1490,6 +1491,8 @@ const ModernDashboard = () => {
                 <Text style={[styles.statLabelCompact, { color: colors.textDim, fontSize: isSmallMobile ? 8 : 9 }]}>Net</Text>
                 <Text style={[styles.statValueCompact, { color: colors.success, fontSize: isSmallMobile ? 12 : 14 }]}>{formatCurrency(totalNet)}</Text>
               </View>
+              {titheTrackingEnabled && (
+              <>
               <View style={[styles.statItemCompact, { minWidth: isSmallMobile ? '28%' : '30%' }]}>
                 <Text style={[styles.statLabelCompact, { color: colors.textDim, fontSize: isSmallMobile ? 8 : 9 }]}>Tithe Owed</Text>
                 <Text style={[styles.statValueCompact, { color: colors.accent, fontSize: isSmallMobile ? 12 : 14 }]}>{formatCurrency(totalTitheOwed)}</Text>
@@ -1498,6 +1501,8 @@ const ModernDashboard = () => {
                 <Text style={[styles.statLabelCompact, { color: colors.textDim, fontSize: isSmallMobile ? 8 : 9 }]}>Tithe Paid</Text>
                 <Text style={[styles.statValueCompact, { color: colors.success, fontSize: isSmallMobile ? 12 : 14 }]}>{formatCurrency(totalTithePaid)}</Text>
               </View>
+              </>
+              )}
               <View style={[styles.statItemCompact, { minWidth: isSmallMobile ? '28%' : '30%' }]}>
                 <Text style={[styles.statLabelCompact, { color: colors.textDim, fontSize: isSmallMobile ? 8 : 9 }]}>Expenses</Text>
                 <Text style={[styles.statValueCompact, { color: colors.danger, fontSize: isSmallMobile ? 12 : 14 }]}>{formatCurrency(totalExpenses)}</Text>
@@ -1592,7 +1597,7 @@ const ModernDashboard = () => {
                 {filteredIncome.length > 0 ? (
                   <View style={styles.incomeListFlex}>
                     {filteredIncome.map((income, index) => (
-                      <IncomeRow key={income.IncomeId || index} income={income} onEdit={openEditIncome} colors={colors} />
+                      <IncomeRow key={income.IncomeId || index} income={income} onEdit={openEditIncome} colors={colors} titheTrackingEnabled={titheTrackingEnabled} />
                     ))}
                   </View>
                 ) : (
@@ -1888,6 +1893,7 @@ const ModernDashboard = () => {
                 placeholder="0.00"
                 keyboardType="decimal-pad"
               />
+              {titheTrackingEnabled && (
               <ModalInput
                 label="Tithe (10%)"
                 value={incomeForm.Tithe}
@@ -1895,6 +1901,7 @@ const ModernDashboard = () => {
                 placeholder="Auto-calculated"
                 keyboardType="decimal-pad"
               />
+              )}
               <ModalInput
                 label="Date"
                 value={incomeForm.Date}

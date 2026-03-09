@@ -136,8 +136,8 @@ export default function LandingPage({ onLogin, onSignup }) {
     },
     {
       icon: '⛪',
-      title: 'Tithe Tracking',
-      description: 'Automatically calculate and track your tithe with dedicated status tracking.',
+      title: 'Giving Tracker',
+      description: 'Automatically track charitable giving as expenses with a dedicated category and toggle.',
       color: 'rgba(102, 126, 234, 0.3)',
     },
     {
@@ -214,8 +214,8 @@ export default function LandingPage({ onLogin, onSignup }) {
             <Text style={styles.heroHighlight}>Give Generously</Text>
           </Text>
           <Text style={[styles.heroSubtitle, isSmall && styles.heroSubtitleSmall]}>
-            The all-in-one budget app with built-in tithe tracking.{'\n'}
-            Take control of your finances and your giving.
+            The all-in-one budget app with built-in giving tracker.{'\n'}
+            Take control of your finances and your generosity.
           </Text>
 
           <View style={[styles.heroCTA, isSmall && styles.heroCTASmall]}>
@@ -262,12 +262,12 @@ export default function LandingPage({ onLogin, onSignup }) {
             <Text style={styles.titheBadgeText}>⛪ Built for Givers</Text>
           </View>
           <Text style={styles.titheTitle}>
-            "Bring the full tithe into the storehouse..."
+            Automatic Giving Tracker
           </Text>
-          <Text style={styles.titheVerse}>— Malachi 3:10</Text>
+          <Text style={styles.titheVerse}>Generosity, simplified</Text>
           <Text style={styles.titheDescription}>
-            Automatically calculate 10% of your income and track your giving.
-            See your tithe balance at a glance and honor your commitment with confidence.
+            Opt in to automatically calculate a percentage of every paycheck as a giving expense.
+            Track your charitable contributions in a dedicated category — toggle it on or off anytime.
           </Text>
         </View>
 

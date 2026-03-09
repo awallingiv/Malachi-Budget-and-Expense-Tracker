@@ -151,7 +151,7 @@ export const authService = {
     }
   },
 
-  register: async (username, password, email, name) => {
+  register: async (username, password, email, name, enableTitheTracking) => {
     console.log('🔐 apiService.register() called');
     console.log('📤 Request details:');
     console.log('  - URL:', API_BASE_URL + '/auth/register');
@@ -160,13 +160,15 @@ export const authService = {
     console.log('  - Email:', email);
     console.log('  - Name:', name);
     console.log('  - Password: [HIDDEN - ' + password.length + ' characters]');
+    console.log('  - enableTitheTracking:', !!enableTitheTracking);
     
     try {
       const response = await api.post('/auth/register', {
         username,
         password,
         email,
-        name
+        name,
+        enableTitheTracking: !!enableTitheTracking
       });
       console.log('📥 Register API Response received:');
       console.log('  - Status:', response.status);

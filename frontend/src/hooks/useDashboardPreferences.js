@@ -168,6 +168,7 @@ export const useDashboardPreferences = (userId, isDark) => {
   const [selectedThemePreset, setSelectedThemePreset] = useState('default');
   const [selectedBackground, setSelectedBackground] = useState('default');
   const [widgetVisibility, setWidgetVisibility] = useState(DEFAULT_WIDGET_VISIBILITY);
+  const [titheTrackingEnabled, setTitheTrackingEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -189,6 +190,7 @@ export const useDashboardPreferences = (userId, isDark) => {
             if (prefs.ThemePreset) setSelectedThemePreset(prefs.ThemePreset);
             if (prefs.BackgroundPreset) setSelectedBackground(prefs.BackgroundPreset);
             if (prefs.WidgetVisibility) setWidgetVisibility(prefs.WidgetVisibility);
+            setTitheTrackingEnabled(!!prefs.TitheTrackingEnabled);
             setLoading(false);
             return;
           }
@@ -317,6 +319,7 @@ export const useDashboardPreferences = (userId, isDark) => {
     selectedThemePreset,
     selectedBackground,
     widgetVisibility,
+    titheTrackingEnabled,
     loading,
     saving,
 

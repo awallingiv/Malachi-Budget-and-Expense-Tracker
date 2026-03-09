@@ -7,7 +7,8 @@ const IncomeForm = ({
   income = null, 
   isVisible, 
   onClose, 
-  onSave 
+  onSave,
+  titheTrackingEnabled = false 
 }) => {
   const { user } = useAuth();
   const [formData, setFormData] = useState({
@@ -398,6 +399,7 @@ const IncomeForm = ({
             </View>
 
             {/* Tithe Section */}
+            {titheTrackingEnabled && (
             <View style={styles.titheSection}>
               <View style={styles.titheSectionHeader}>
                 <Text style={styles.sectionTitle}>Tithe Calculation</Text>
@@ -501,6 +503,7 @@ const IncomeForm = ({
                 </View>
               </View>
             </View>
+            )}
 
             {/* Additional Details */}
             <View style={styles.additionalSection}>
