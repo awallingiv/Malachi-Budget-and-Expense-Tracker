@@ -361,7 +361,7 @@ BEGIN
             AND B.PeriodEnd >= @StartDate
         GROUP BY B.CategoryName
     ),
-    -- Get actual spending by category
+    -- Get actual spending by category (exclude deferred transactions)
     ActualAmounts AS (
         SELECT 
             T.Category AS CategoryName,
@@ -372,23 +372,49 @@ BEGIN
             AND T.Date >= @StartDate
             AND T.Date <= @EndDate
             AND T.Amount IS NOT NULL
+            AND ISNULL(T.Status, '') <> 'deferred'
         GROUP BY T.Category
+    ),
+    -- Get deferred amounts by category (planned but not yet deducted)
+    DeferredAmounts AS (
+        SELECT 
+            T.Category AS CategoryName,
+            SUM(T.Amount) AS DeferredAmount,
+            COUNT(*) AS DeferredCount
+        FROM Transactions T
+        WHERE T.UserId = @UserID
+            AND T.Date >= @StartDate
+            AND T.Date <= @EndDate
+            AND T.Amount IS NOT NULL
+            AND T.Status = 'deferred'
+        GROUP BY T.Category
+    ),
+    -- Union of all known categories across budgets, actuals, and deferred
+    AllCategories AS (
+        SELECT CategoryName FROM BudgetedAmounts
+        UNION
+        SELECT CategoryName FROM ActualAmounts
+        UNION
+        SELECT CategoryName FROM DeferredAmounts
     )
-    -- Combine budgeted and actual amounts
+    -- Combine budgeted, actual, and deferred amounts
     SELECT 
-        COALESCE(B.CategoryName, A.CategoryName) AS Category,
+        C.CategoryName AS Category,
         ISNULL(B.BudgetedAmount, 0) AS BudgetedAmount,
         ISNULL(A.ActualAmount, 0) AS ActualAmount,
         ISNULL(A.TransactionCount, 0) AS TransactionCount,
+        ISNULL(D.DeferredAmount, 0) AS DeferredAmount,
+        ISNULL(D.DeferredCount, 0) AS DeferredCount,
         CASE 
             WHEN B.BudgetedAmount IS NULL THEN NULL
             WHEN B.BudgetedAmount = 0 THEN 0
             ELSE (ISNULL(A.ActualAmount, 0) / B.BudgetedAmount) * 100
         END AS PercentageUsed,
         ISNULL(A.ActualAmount, 0) - ISNULL(B.BudgetedAmount, 0) AS Difference
-    FROM BudgetedAmounts B
-    FULL OUTER JOIN ActualAmounts A ON B.CategoryName = A.CategoryName
-    WHERE B.CategoryName IS NOT NULL OR A.CategoryName IS NOT NULL
+    FROM AllCategories C
+    LEFT JOIN BudgetedAmounts B ON C.CategoryName = B.CategoryName
+    LEFT JOIN ActualAmounts A ON C.CategoryName = A.CategoryName
+    LEFT JOIN DeferredAmounts D ON C.CategoryName = D.CategoryName
     ORDER BY Difference DESC, ActualAmount DESC;
 END;
 GO
