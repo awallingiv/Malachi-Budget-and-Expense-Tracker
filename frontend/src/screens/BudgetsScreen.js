@@ -150,8 +150,21 @@ export default function BudgetsScreen() {
     }
   };
 
-  // Compute actual spending per category for current period
+  // Compute actual spending per category for current period (exclude deferred)
   const actualByCategory = transactions.reduce((acc, txn) => {
+    if (txn.Status === 'deferred') return acc;
+    const date = new Date(txn.Date || txn.CreationTime);
+    if (isNaN(date.getTime())) return acc;
+    if (date < periodStart || date > periodEnd) return acc;
+
+    const key = txn.TableName || 'Other';
+    acc[key] = (acc[key] || 0) + (txn.Amount || 0);
+    return acc;
+  }, {});
+
+  // Compute deferred amounts per category for current period
+  const deferredByCategory = transactions.reduce((acc, txn) => {
+    if (txn.Status !== 'deferred') return acc;
     const date = new Date(txn.Date || txn.CreationTime);
     if (isNaN(date.getTime())) return acc;
     if (date < periodStart || date > periodEnd) return acc;
@@ -169,6 +182,7 @@ export default function BudgetsScreen() {
   const renderBudgetRow = (budget) => {
     const planned = budget.Amount || 0;
     const actual = actualByCategory[budget.CategoryName] || 0;
+    const deferred = deferredByCategory[budget.CategoryName] || 0;
     const remaining = planned - actual;
     const usedPct = planned > 0 ? actual / planned : 0;
 
@@ -208,6 +222,12 @@ export default function BudgetsScreen() {
             <Text style={styles.label}>Actual</Text>
             <Text style={styles.value}>{formatCurrency(actual)}</Text>
           </View>
+          {deferred > 0 && (
+            <View style={styles.budgetRow}>
+              <Text style={[styles.label, styles.deferredLabel]}>Deferred ⏸</Text>
+              <Text style={[styles.value, styles.deferredValue]}>{formatCurrency(deferred)}</Text>
+            </View>
+          )}
           <View style={styles.budgetRow}>
             <Text style={styles.label}>Remaining</Text>
             <Text
@@ -458,6 +478,12 @@ const styles = StyleSheet.create({
   },
   value: {
     fontWeight: '600',
+  },
+  deferredLabel: {
+    color: '#e65100',
+  },
+  deferredValue: {
+    color: '#e65100',
   },
   positive: {
     color: '#2e7d32',

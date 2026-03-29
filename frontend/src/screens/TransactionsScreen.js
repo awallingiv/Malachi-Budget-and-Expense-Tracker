@@ -70,6 +70,8 @@ export default function TransactionsScreen() {
     'Shopping', 'Healthcare', 'Dining', 'Subscriptions', 'Other'
   ];
 
+  const DEFERRED_HINT = "Deferred transactions are tracked in your budget but won't count against actual spending until marked paid.";
+
   // New transaction form state
   const [newTransaction, setNewTransaction] = useState({
     TableName: '',
@@ -285,8 +287,15 @@ export default function TransactionsScreen() {
       }
     });
 
-  // Calculate total
-  const totalAmount = filteredTransactions.reduce((sum, t) => sum + (parseFloat(t.Amount) || 0), 0);
+  // Calculate total (deferred excluded from actual total)
+  const totalAmount = filteredTransactions.reduce((sum, t) => {
+    if (t.Status === 'deferred') return sum;
+    return sum + (parseFloat(t.Amount) || 0);
+  }, 0);
+  const deferredTotal = filteredTransactions.reduce((sum, t) => {
+    if (t.Status !== 'deferred') return sum;
+    return sum + (parseFloat(t.Amount) || 0);
+  }, 0);
 
   const renderTransaction = ({ item }) => (
     <TouchableOpacity
@@ -325,9 +334,17 @@ export default function TransactionsScreen() {
             {item.TableName} • {formatDate(item.Date)}
           </Text>
         </View>
-        <Text style={[styles.transactionAmount, { color: theme.accent }]}>
-          -{formatCurrency(item.Amount)}
-        </Text>
+        <View style={styles.transactionRight}>
+          <Text style={[styles.transactionAmount, { color: item.Status === 'deferred' ? '#e65100' : theme.accent }]}>
+            -{formatCurrency(item.Amount)}
+          </Text>
+          {item.Status === 'deferred' && (
+            <Text style={styles.deferredBadge}>⏸ deferred</Text>
+          )}
+          {item.Status === 'pending' && (
+            <Text style={styles.pendingBadge}>⏳ pending</Text>
+          )}
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -347,6 +364,7 @@ export default function TransactionsScreen() {
         <Text style={[styles.headerTitle, { color: theme.text }]}>Expenses</Text>
         <Text style={[styles.headerSubtitle, { color: theme.textSecondary }]}>
           {filteredTransactions.length} transactions • {formatCurrency(totalAmount)}
+          {deferredTotal > 0 ? ` • ⏸ ${formatCurrency(deferredTotal)} deferred` : ''}
         </Text>
       </View>
 
@@ -656,6 +674,34 @@ export default function TransactionsScreen() {
                 multiline
                 numberOfLines={3}
               />
+
+              <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Payment Status</Text>
+              <View style={styles.statusRow}>
+                {['paid', 'pending', 'deferred'].map((s) => (
+                  <TouchableOpacity
+                    key={s}
+                    style={[
+                      styles.statusChip,
+                      { borderColor: theme.border },
+                      newTransaction.Status === s && { backgroundColor: theme.primary, borderColor: theme.primary }
+                    ]}
+                    onPress={() => setNewTransaction(prev => ({ ...prev, Status: s }))}
+                  >
+                    <Text style={[
+                      styles.statusChipText,
+                      { color: theme.textSecondary },
+                      newTransaction.Status === s && { color: theme.textOnPrimary }
+                    ]}>
+                      {s === 'paid' ? '✓ Paid' : s === 'pending' ? '⏳ Pending' : '⏸ Deferred'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              {newTransaction.Status === 'deferred' && (
+                <Text style={[styles.deferredHint, { color: '#e65100' }]}>
+                  {DEFERRED_HINT}
+                </Text>
+              )}
             </ScrollView>
 
             <View style={[styles.modalFooter, { borderTopColor: theme.border }]}>
@@ -714,6 +760,37 @@ export default function TransactionsScreen() {
                   onChangeText={(text) => setSelectedTransaction(prev => ({ ...prev, Notes: text }))}
                   multiline
                 />
+
+                <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Payment Status</Text>
+                <View style={styles.statusRow}>
+                  {['paid', 'pending', 'deferred'].map((s) => {
+                    const currentStatus = selectedTransaction.Status || 'paid';
+                    return (
+                      <TouchableOpacity
+                        key={s}
+                        style={[
+                          styles.statusChip,
+                          { borderColor: theme.border },
+                          currentStatus === s && { backgroundColor: theme.primary, borderColor: theme.primary }
+                        ]}
+                        onPress={() => setSelectedTransaction(prev => ({ ...prev, Status: s }))}
+                      >
+                        <Text style={[
+                          styles.statusChipText,
+                          { color: theme.textSecondary },
+                          currentStatus === s && { color: theme.textOnPrimary }
+                        ]}>
+                          {s === 'paid' ? '✓ Paid' : s === 'pending' ? '⏳ Pending' : '⏸ Deferred'}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                {selectedTransaction.Status === 'deferred' && (
+                  <Text style={[styles.deferredHint, { color: '#e65100' }]}>
+                    {DEFERRED_HINT}
+                  </Text>
+                )}
 
                 <TouchableOpacity
                   style={[styles.deleteButton, { borderColor: theme.error }]}
@@ -947,6 +1024,19 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '600',
   },
+  transactionRight: {
+    alignItems: 'flex-end',
+  },
+  deferredBadge: {
+    fontSize: 11,
+    color: '#e65100',
+    marginTop: 2,
+  },
+  pendingBadge: {
+    fontSize: 11,
+    color: '#f57c00',
+    marginTop: 2,
+  },
   emptyContainer: {
     alignItems: 'center',
     paddingVertical: 60,
@@ -1091,6 +1181,28 @@ const styles = StyleSheet.create({
   deleteButtonText: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  statusRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 8,
+  },
+  statusChip: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  statusChipText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  deferredHint: {
+    fontSize: 12,
+    marginBottom: 8,
+    lineHeight: 17,
   },
   modalFooter: {
     flexDirection: 'row',
