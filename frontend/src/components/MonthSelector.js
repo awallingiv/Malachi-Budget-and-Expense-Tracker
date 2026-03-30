@@ -136,14 +136,12 @@ export default function MonthSelector({ selectedDate, onDateChange, onCustomRang
         style={[
           styles.arrowButton,
           { backgroundColor: theme.surface, width: isSmallMobile ? 36 : 40, height: isSmallMobile ? 36 : 40 },
-          isCurrentMonth() && styles.arrowButtonDisabled
         ]}
         onPress={goToNextMonth}
-        disabled={isCurrentMonth()}
       >
         <Text style={[
           styles.arrowText,
-          { color: isCurrentMonth() ? theme.textDisabled : theme.text, fontSize: isSmallMobile ? 24 : 28 }
+          { color: theme.text, fontSize: isSmallMobile ? 24 : 28 }
         ]}>›</Text>
       </TouchableOpacity>
 

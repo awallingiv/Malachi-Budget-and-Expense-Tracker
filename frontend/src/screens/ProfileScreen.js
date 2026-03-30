@@ -434,7 +434,7 @@ export default function ProfileScreen() {
                 styles.toggle,
                 { backgroundColor: themeMode === 'dark' ? (colors?.primary || theme.primary) : (colors?.inputBg || theme.surface) }
               ]}
-              onPress={toggleTheme}
+              onPress={() => toggleTheme(user?.UserId)}
             >
               <View style={[
                 styles.toggleThumb,

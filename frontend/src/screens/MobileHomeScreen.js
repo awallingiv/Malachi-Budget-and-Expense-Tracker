@@ -520,7 +520,7 @@ export default function MobileHomeScreen({ navigation }) {
           <View style={styles.headerActions}>
             <TouchableOpacity
               style={[styles.headerButton, { backgroundColor: colors?.inputBg || theme.surface }]}
-              onPress={toggleTheme}
+              onPress={() => toggleTheme(user?.UserId)}
             >
               <Text style={styles.headerButtonIcon}>{isDark ? '☀️' : '🌙'}</Text>
             </TouchableOpacity>
@@ -902,7 +902,7 @@ export default function MobileHomeScreen({ navigation }) {
                 <Text style={[styles.settingsSectionTitle, { color: colors?.text || theme.text }]}>Appearance</Text>
                 <TouchableOpacity
                   style={[styles.settingsRow, { backgroundColor: colors?.inputBg || theme.surface }]}
-                  onPress={toggleTheme}
+                  onPress={() => toggleTheme(user?.UserId)}
                 >
                   <Text style={[styles.settingsRowLabel, { color: colors?.text || theme.text }]}>
                     {isDark ? '🌙 Dark Mode' : '☀️ Light Mode'}

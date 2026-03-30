@@ -460,9 +460,9 @@ export const ThemeProvider = ({ children }) => {
     }
   };
 
-  const toggleTheme = () => {
+  const toggleTheme = (userId = null) => {
     const nextMode = themeMode === 'dark' ? 'light' : 'dark';
-    changeTheme(nextMode);
+    changeTheme(nextMode, userId);
   };
 
   const changeThemePreset = async (preset, userId = null) => {
@@ -506,31 +506,42 @@ export const ThemeProvider = ({ children }) => {
   };
 
   // Sync theme preferences with backend (call after login)
+  // Only overrides local values when the backend has a saved preference.
+  // If backend returns null/empty, the local value (default dark) is kept
+  // AND pushed to the backend so future syncs are consistent.
   const syncWithBackend = useCallback(async (userId) => {
     if (!userId) return;
 
     try {
       const prefs = await preferencesService.getPreferences(userId);
       if (prefs) {
-        // Update state and local storage with backend values
-        if (prefs.Theme) {
-          setThemeMode(prefs.Theme);
-          await storage.setItem('themeMode', prefs.Theme);
+        const backendTheme = prefs.Theme;
+        const backendPreset = prefs.ThemePreset;
+        const backendBg = prefs.BackgroundPreset;
+
+        if (backendTheme) {
+          setThemeMode(backendTheme);
+          await storage.setItem('themeMode', backendTheme);
+        } else {
+          // Backend has no saved theme — push current local default to backend
+          try {
+            await preferencesService.updatePreferences(userId, { Theme: themeMode });
+          } catch (_) { /* best effort */ }
         }
-        if (prefs.ThemePreset) {
-          setThemePreset(prefs.ThemePreset);
-          await storage.setItem('themePreset', prefs.ThemePreset);
+        if (backendPreset) {
+          setThemePreset(backendPreset);
+          await storage.setItem('themePreset', backendPreset);
         }
-        if (prefs.BackgroundPreset) {
-          setBackgroundPreset(prefs.BackgroundPreset);
-          await storage.setItem('backgroundPreset', prefs.BackgroundPreset);
+        if (backendBg) {
+          setBackgroundPreset(backendBg);
+          await storage.setItem('backgroundPreset', backendBg);
         }
       }
     } catch (error) {
       console.error('Failed to sync theme preferences from backend:', error);
       // Fall back to local storage (already loaded)
     }
-  }, []);
+  }, [themeMode]);
 
   // Compute isDark based on themeMode
   const isDark = themeMode === 'dark' || (themeMode === 'auto' && systemColorScheme === 'dark');

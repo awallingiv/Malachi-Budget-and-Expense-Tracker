@@ -40,13 +40,13 @@ const resolveApiBaseUrl = () => {
     
     // Development or testing on localhost
     if (__DEV__) {
-      console.log('🧪 Development web mode - using localhost:3002');
-      return 'http://localhost:3002/api';
+      console.log('🧪 Development web mode - using localhost:5001');
+      return 'http://localhost:5001/api';
     }
     
     // Production build but running on localhost (testing)
-    console.log('🧪 Production build on localhost - using localhost:3002');
-    return 'http://localhost:3002/api';
+    console.log('🧪 Production build on localhost - using localhost:5001');
+    return 'http://localhost:5001/api';
   }
 
   // Production mobile builds use the full production URL
