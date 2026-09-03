@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("ReactBudget.Api")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+6625f88e35f895be376a0de8565ad55230b7647e")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+b836e5629467ca1196efb959d75cc2732663d4e3")]
 [assembly: System.Reflection.AssemblyProductAttribute("ReactBudget.Api")]
 [assembly: System.Reflection.AssemblyTitleAttribute("ReactBudget.Api")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
